@@ -560,8 +560,6 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 	trace_wakeup_source_activate(ws->name, cec);
 }
 
-<<<<<<< HEAD
-=======
 #ifdef CONFIG_BOEFFLA_WL_BLOCKER
 // AP: Function to check if a wakelock is on the wakelock blocker list
 static bool check_for_block(struct wakeup_source *ws)
@@ -613,7 +611,6 @@ static bool check_for_block(struct wakeup_source *ws)
 }
 #endif
 
->>>>>>> 4f4288a... boeffla_wl_blocker: update to wakelock blocker driver v1.0.1
 /**
  * wakeup_source_report_event - Report wakeup event using the given source.
  * @ws: Wakeup source to report the event for.
