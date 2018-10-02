@@ -642,14 +642,18 @@ endif
 # Tell gcc to never replace conditional load with a non-conditional one
 KBUILD_CFLAGS	+= $(call cc-option,--param=allow-store-data-races=0)
 
+ifneq (,$(findstring ccache, $(CROSS_COMPILE)))
+CCACHE := $(shell which ccache)
+endif
+
 ifdef CONFIG_RKP_CFP_JOPP
 REAL_CC		= $(srctree)/../prebuilts/gcc-cfp/gcc-cfp-jopp-only/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc
-CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
+CC		= $(srctree)/scripts/gcc-wrapper.py $(CCACHE) $(REAL_CC)
 endif
 ifdef CONFIG_RKP_CFP_ROPP
 #REAL_CC		= $(srctree)/../prebuilts/gcc-cfp/gcc-cfp-single/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc
 REAL_CC		= $(srctree)/scripts/toolchain/gcc-cfp/gcc-cfp-single/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc
-CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
+CC		= $(srctree)/scripts/gcc-wrapper.py $(CCACHE) $(REAL_CC)
 endif
 # check for 'asm goto'
 ifeq ($(shell $(CONFIG_SHELL) $(srctree)/scripts/gcc-goto.sh $(CC) $(KBUILD_CFLAGS)), y)
