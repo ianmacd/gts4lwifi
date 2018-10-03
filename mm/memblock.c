@@ -19,6 +19,9 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/memblock.h>
+#include <linux/preempt.h>
+#include <linux/seqlock.h>
+#include <linux/irqflags.h>
 
 #include <asm-generic/sections.h>
 #include <linux/io.h>
@@ -31,6 +34,7 @@ static struct memblock_region memblock_reserved_init_regions[INIT_MEMBLOCK_REGIO
 static struct memblock_region memblock_physmem_init_regions[INIT_PHYSMEM_REGIONS] __initdata_memblock;
 #endif
 
+static seqcount_t memblock_seq;
 struct memblock memblock __initdata_memblock = {
 	.memory.regions		= memblock_memory_init_regions,
 	.memory.cnt		= 1,	/* empty dummy entry */
@@ -734,7 +738,8 @@ int __init_memblock memblock_free(phys_addr_t base, phys_addr_t size)
 		     (unsigned long long)base + size - 1,
 		     (void *)_RET_IP_);
 
-	kmemleak_free_part(__va(base), size);
+	if (base < memblock.current_limit)
+		kmemleak_free_part(__va(base), size);
 	return memblock_remove_range(&memblock.reserved, base, size);
 }
 
@@ -822,6 +827,17 @@ int __init_memblock memblock_mark_mirror(phys_addr_t base, phys_addr_t size)
 	return memblock_setclr_flag(base, size, 1, MEMBLOCK_MIRROR);
 }
 
+/**
+ * memblock_mark_nomap - Mark a memory region with flag MEMBLOCK_NOMAP.
+ * @base: the base phys addr of the region
+ * @size: the size of the region
+ *
+ * Return 0 on success, -errno on failure.
+ */
+int __init_memblock memblock_mark_nomap(phys_addr_t base, phys_addr_t size)
+{
+	return memblock_setclr_flag(base, size, 1, MEMBLOCK_NOMAP);
+}
 
 /**
  * __next_reserved_mem_region - next function for for_each_reserved_region()
@@ -911,6 +927,10 @@ void __init_memblock __next_mem_range(u64 *idx, int nid, ulong flags,
 
 		/* if we want mirror memory skip non-mirror memory regions */
 		if ((flags & MEMBLOCK_MIRROR) && !memblock_is_mirror(m))
+			continue;
+
+		/* skip nomap memory unless we were asked for it explicitly */
+		if (!(flags & MEMBLOCK_NOMAP) && memblock_is_nomap(m))
 			continue;
 
 		if (!type_b) {
@@ -1020,6 +1040,10 @@ void __init_memblock __next_mem_range_rev(u64 *idx, int nid, ulong flags,
 
 		/* if we want mirror memory skip non-mirror memory regions */
 		if ((flags & MEMBLOCK_MIRROR) && !memblock_is_mirror(m))
+			continue;
+
+		/* skip nomap memory unless we were asked for it explicitly */
+		if (!(flags & MEMBLOCK_NOMAP) && memblock_is_nomap(m))
 			continue;
 
 		if (!type_b) {
@@ -1151,7 +1175,8 @@ static phys_addr_t __init memblock_alloc_range_nid(phys_addr_t size,
 		 * The min_count is set to 0 so that memblock allocations are
 		 * never reported as leaks.
 		 */
-		kmemleak_alloc(__va(found), size, 0, 0);
+		if (found < memblock.current_limit)
+			kmemleak_alloc(__va(found), size, 0, 0);
 		return found;
 	}
 	return 0;
@@ -1491,7 +1516,7 @@ void __init memblock_enforce_memory_limit(phys_addr_t limit)
 			      (phys_addr_t)ULLONG_MAX);
 }
 
-static int __init_memblock memblock_search(struct memblock_type *type, phys_addr_t addr)
+static int __init_memblock __memblock_search(struct memblock_type *type, phys_addr_t addr)
 {
 	unsigned int left = 0, right = type->cnt;
 
@@ -1509,6 +1534,19 @@ static int __init_memblock memblock_search(struct memblock_type *type, phys_addr
 	return -1;
 }
 
+static int __init_memblock memblock_search(struct memblock_type *type, phys_addr_t addr)
+{
+	int ret;
+	unsigned long seq;
+
+	do {
+		seq = raw_read_seqcount_begin(&memblock_seq);
+		ret = __memblock_search(type, addr);
+	} while (unlikely(read_seqcount_retry(&memblock_seq, seq)));
+
+	return ret;
+}
+
 int __init memblock_is_reserved(phys_addr_t addr)
 {
 	return memblock_search(&memblock.reserved, addr) != -1;
@@ -1517,6 +1555,15 @@ int __init memblock_is_reserved(phys_addr_t addr)
 int __init_memblock memblock_is_memory(phys_addr_t addr)
 {
 	return memblock_search(&memblock.memory, addr) != -1;
+}
+
+int __init_memblock memblock_is_map_memory(phys_addr_t addr)
+{
+	int i = memblock_search(&memblock.memory, addr);
+
+	if (i == -1)
+		return false;
+	return !memblock_is_nomap(&memblock.memory.regions[i]);
 }
 
 #ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
@@ -1556,6 +1603,13 @@ int __init_memblock memblock_is_region_memory(phys_addr_t base, phys_addr_t size
 	return memblock.memory.regions[idx].base <= base &&
 		(memblock.memory.regions[idx].base +
 		 memblock.memory.regions[idx].size) >= end;
+}
+
+int __init_memblock memblock_overlaps_memory(phys_addr_t base, phys_addr_t size)
+{
+	memblock_cap_size(base, &size);
+
+	return memblock_overlaps_region(&memblock.memory, base, size) >= 0;
 }
 
 /**
@@ -1674,6 +1728,37 @@ void __init memblock_allow_resize(void)
 	memblock_can_resize = 1;
 }
 
+static unsigned long __init_memblock
+memblock_resize_late(int begin, unsigned long flags)
+{
+	static int memblock_can_resize_old;
+
+	if (begin) {
+		preempt_disable();
+		local_irq_save(flags);
+		memblock_can_resize_old = memblock_can_resize;
+		memblock_can_resize = 0;
+		raw_write_seqcount_begin(&memblock_seq);
+	} else {
+		raw_write_seqcount_end(&memblock_seq);
+		memblock_can_resize = memblock_can_resize_old;
+		local_irq_restore(flags);
+		preempt_enable();
+	}
+
+	return flags;
+}
+
+unsigned long __init_memblock memblock_region_resize_late_begin(void)
+{
+	return memblock_resize_late(1, 0);
+}
+
+void __init_memblock memblock_region_resize_late_end(unsigned long flags)
+{
+	memblock_resize_late(0, flags);
+}
+
 static int __init early_memblock(char *p)
 {
 	if (p && strstr(p, "debug"))
@@ -1723,10 +1808,10 @@ static int __init memblock_init_debugfs(void)
 	struct dentry *root = debugfs_create_dir("memblock", NULL);
 	if (!root)
 		return -ENXIO;
-	debugfs_create_file("memory", S_IRUGO, root, &memblock.memory, &memblock_debug_fops);
-	debugfs_create_file("reserved", S_IRUGO, root, &memblock.reserved, &memblock_debug_fops);
+	debugfs_create_file("memory", S_IRUGO | S_IRGRP, root, &memblock.memory, &memblock_debug_fops);
+	debugfs_create_file("reserved", S_IRUGO | S_IRGRP, root, &memblock.reserved, &memblock_debug_fops);
 #ifdef CONFIG_HAVE_MEMBLOCK_PHYS_MAP
-	debugfs_create_file("physmem", S_IRUGO, root, &memblock.physmem, &memblock_debug_fops);
+	debugfs_create_file("physmem", S_IRUGO | S_IRGRP, root, &memblock.physmem, &memblock_debug_fops);
 #endif
 
 	return 0;

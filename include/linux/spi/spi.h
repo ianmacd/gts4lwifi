@@ -844,6 +844,17 @@ extern int spi_sync_locked(struct spi_device *spi, struct spi_message *message);
 extern int spi_bus_lock(struct spi_master *master);
 extern int spi_bus_unlock(struct spi_master *master);
 
+#ifndef CONFIG_ESE_SECURE
+extern int ese_spi_request_gpios(struct spi_device *spidev);
+extern int ese_spi_free_gpios(struct spi_device *spidev);
+#endif
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+extern int fp_spi_clock_set_rate(struct spi_device *spidev);
+extern int fp_spi_clock_enable(struct spi_device *spidev);
+extern int fp_spi_clock_disable(struct spi_device *spidev);
+extern int fp_spi_request_gpios(struct spi_device *spidev);
+#endif
+
 /**
  * spi_write - SPI synchronous write
  * @spi: device to which data will be written

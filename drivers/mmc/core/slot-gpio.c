@@ -25,6 +25,7 @@ struct mmc_gpio {
 	struct gpio_desc *cd_gpio;
 	bool override_ro_active_level;
 	bool override_cd_active_level;
+	bool status;
 	irqreturn_t (*cd_gpio_isr)(int irq, void *dev_id);
 	char *ro_label;
 	char cd_label[0];
@@ -34,9 +35,25 @@ static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 {
 	/* Schedule a card detection after a debounce timeout */
 	struct mmc_host *host = dev_id;
+	struct mmc_gpio *ctx = host->slot.handler_priv;
+	bool status;
 
-	host->trigger_card_event = true;
-	mmc_detect_change(host, msecs_to_jiffies(200));
+	status = mmc_gpio_get_cd(host) ? true : false;
+
+	if (status ^ ctx->status) {
+		pr_err("%s: slot status change detected (%d -> %d), GPIO_ACTIVE_%s\n",
+				mmc_hostname(host), ctx->status, status,
+				(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH) ?
+				"HIGH" : "LOW");
+		ctx->status = status;
+
+		host->trigger_card_event = true;
+
+		if (host->card_detect_cnt < 0x7FFFFFFF)
+			host->card_detect_cnt++;
+
+		mmc_detect_change(host, msecs_to_jiffies(200));
+	}
 
 	return IRQ_HANDLED;
 }
@@ -136,6 +153,13 @@ void mmc_gpiod_request_cd_irq(struct mmc_host *host)
 	if (irq >= 0 && host->caps & MMC_CAP_NEEDS_POLL)
 		irq = -EINVAL;
 
+        ret = mmc_gpio_get_cd(host);
+        if (ret < 0) {
+            pr_err("%s: getting card detection gpio is failed.\n", mmc_hostname(host));
+            return;
+        }
+        ctx->status = ret ? true : false;
+
 	if (irq >= 0) {
 		if (!ctx->cd_gpio_isr)
 			ctx->cd_gpio_isr = mmc_gpio_cd_irqt;
@@ -210,6 +234,33 @@ int mmc_gpio_request_cd(struct mmc_host *host, unsigned int gpio,
 	return 0;
 }
 EXPORT_SYMBOL(mmc_gpio_request_cd);
+
+/**
+ * mmc_gpio_free_cd - free the card-detection gpio
+ * @host: mmc host
+ *
+ * It's provided only for cases that client drivers need to manually free
+ * up the card-detection gpio requested by mmc_gpio_request_cd().
+ */
+void mmc_gpio_free_cd(struct mmc_host *host)
+{
+	struct mmc_gpio *ctx = host->slot.handler_priv;
+	int gpio;
+
+	if (!ctx || !ctx->cd_gpio)
+		return;
+
+	if (host->slot.cd_irq >= 0) {
+		devm_free_irq(&host->class_dev, host->slot.cd_irq, host);
+		host->slot.cd_irq = -EINVAL;
+	}
+
+	gpio = desc_to_gpio(ctx->cd_gpio);
+	ctx->cd_gpio = NULL;
+
+	devm_gpio_free(&host->class_dev, gpio);
+}
+EXPORT_SYMBOL(mmc_gpio_free_cd);
 
 /**
  * mmc_gpiod_request_cd - request a gpio descriptor for card-detection

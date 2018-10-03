@@ -18,6 +18,10 @@
 
 #include <trace/events/irq.h>
 
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/qcom/sec_debug.h>
+#endif
+
 #include "internals.h"
 
 /**
@@ -141,10 +145,17 @@ irqreturn_t handle_irq_event_percpu(struct irq_desc *desc)
 	/* action might have become NULL since we dropped the lock */
 	while (action) {
 		irqreturn_t res;
-
+#ifdef CONFIG_SEC_DEBUG
+		sec_debug_timer_log(4444, (int)irqs_disabled(),
+						(void *)action->handler);
+#endif
 		trace_irq_handler_entry(irq, action);
 		res = action->handler(irq, action->dev_id);
 		trace_irq_handler_exit(irq, action, res);
+#ifdef CONFIG_SEC_DEBUG
+		sec_debug_timer_log(5555, (int)irqs_disabled(),
+						(void *)action->handler);
+#endif
 
 		if (WARN_ONCE(!irqs_disabled(),"irq %u handler %pF enabled interrupts\n",
 			      irq, action->handler))

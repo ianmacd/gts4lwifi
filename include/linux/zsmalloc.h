@@ -25,7 +25,10 @@
 enum zs_mapmode {
 	ZS_MM_RW, /* normal read-write mapping */
 	ZS_MM_RO, /* read-only (no copy-out at unmap time) */
-	ZS_MM_WO /* write-only (no copy-in at map time) */
+	ZS_MM_WO, /* write-only (no copy-in at map time) */
+#ifdef CONFIG_ZSWAP_SAME_PAGE_SHARING
+	ZS_MM_RO_NOWAIT /* read-only (no wait if the handle is busy)*/
+#endif
 	/*
 	 * NOTE: ZS_MM_WO should only be used for initializing new
 	 * (uninitialized) allocations.  Partial writes to already
@@ -41,10 +44,10 @@ struct zs_pool_stats {
 
 struct zs_pool;
 
-struct zs_pool *zs_create_pool(const char *name, gfp_t flags);
+struct zs_pool *zs_create_pool(const char *name);
 void zs_destroy_pool(struct zs_pool *pool);
 
-unsigned long zs_malloc(struct zs_pool *pool, size_t size);
+unsigned long zs_malloc(struct zs_pool *pool, size_t size, gfp_t flags);
 void zs_free(struct zs_pool *pool, unsigned long obj);
 
 void *zs_map_object(struct zs_pool *pool, unsigned long handle,

@@ -1649,6 +1649,8 @@ static int fanout_add(struct sock *sk, u16 id, u16 type_flags)
 	default:
 		return -EINVAL;
 	}
+	mutex_lock(&fanout_mutex);
+	err = -EINVAL;
 
 	mutex_lock(&fanout_mutex);
 
@@ -1721,6 +1723,7 @@ out:
 		kfree(rollover);
 		po->rollover = NULL;
 	}
+
 	mutex_unlock(&fanout_mutex);
 	return err;
 }
@@ -2938,12 +2941,14 @@ static int packet_do_bind(struct sock *sk, const char *name, int ifindex,
 	int ret = 0;
 	bool unlisted = false;
 
-	if (po->fanout)
-		return -EINVAL;
-
 	lock_sock(sk);
 	spin_lock(&po->bind_lock);
 	rcu_read_lock();
+
+	if (po->fanout) {
+		ret = -EINVAL;
+		goto out_unlock;
+	}
 
 	if (name) {
 		dev = dev_get_by_name_rcu(sock_net(sk), name);
@@ -3622,14 +3627,19 @@ packet_setsockopt(struct socket *sock, int level, int optname, char __user *optv
 
 		if (optlen != sizeof(val))
 			return -EINVAL;
-		if (po->rx_ring.pg_vec || po->tx_ring.pg_vec)
-			return -EBUSY;
 		if (copy_from_user(&val, optval, sizeof(val)))
 			return -EFAULT;
 		if (val > INT_MAX)
 			return -EINVAL;
-		po->tp_reserve = val;
-		return 0;
+		lock_sock(sk);
+		if (po->rx_ring.pg_vec || po->tx_ring.pg_vec) {
+			ret = -EBUSY;
+		} else {
+			po->tp_reserve = val;
+			ret = 0;
+		}
+		release_sock(sk);
+		return ret;
 	}
 	case PACKET_LOSS:
 	{

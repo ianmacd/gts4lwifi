@@ -899,8 +899,7 @@ static struct dst_entry *ip6_sk_dst_check(struct sock *sk,
 #ifdef CONFIG_IPV6_SUBTREES
 	    ip6_rt_check(&rt->rt6i_src, &fl6->saddr, np->saddr_cache) ||
 #endif
-	   (!(fl6->flowi6_flags & FLOWI_FLAG_SKIP_NH_OIF) &&
-	      (fl6->flowi6_oif && fl6->flowi6_oif != dst->dev->ifindex))) {
+	    (fl6->flowi6_oif && fl6->flowi6_oif != dst->dev->ifindex)) {
 		dst_release(dst);
 		dst = NULL;
 	}
@@ -1242,14 +1241,16 @@ static int ip6_setup_cork(struct sock *sk, struct inet_cork_full *cork,
 	v6_cork->tclass = tclass;
 	if (rt->dst.flags & DST_XFRM_TUNNEL)
 		mtu = np->pmtudisc >= IPV6_PMTUDISC_PROBE ?
-		      rt->dst.dev->mtu : dst_mtu(&rt->dst);
+		      READ_ONCE(rt->dst.dev->mtu) : dst_mtu(&rt->dst);
 	else
 		mtu = np->pmtudisc >= IPV6_PMTUDISC_PROBE ?
-		      rt->dst.dev->mtu : dst_mtu(rt->dst.path);
+		      READ_ONCE(rt->dst.dev->mtu) : dst_mtu(rt->dst.path);
 	if (np->frag_size < mtu) {
 		if (np->frag_size)
 			mtu = np->frag_size;
 	}
+	if (mtu < IPV6_MIN_MTU)
+		return -EINVAL;
 	cork->base.fragsize = mtu;
 	if (dst_allfrag(rt->dst.path))
 		cork->base.flags |= IPCORK_ALLFRAG;
@@ -1332,7 +1333,15 @@ emsgsize:
 	 */
 	if (transhdrlen && sk->sk_protocol == IPPROTO_UDP &&
 	    headersize == sizeof(struct ipv6hdr) &&
+	/* IPA HW support udp checksum offloading. So network stack try to offload UDP packet checksum to IPA HW
+	 * but it fail because of fragmentation and mtu size. In this case, we have to consider next
+	 * ESP protocol header and should add 'dst_exthdrlen' value to compute UDP checksum in network stack normally
+	 * If next destination is xfrm, dst_exthdrlen was 8
+	 */
+#if 0
 	    length < mtu - headersize &&
+#endif
+	    length < mtu - headersize - dst_exthdrlen &&
 	    !(flags & MSG_MORE) &&
 	    rt->dst.dev->features & NETIF_F_V6_CSUM)
 		csummode = CHECKSUM_PARTIAL;
@@ -1361,11 +1370,12 @@ emsgsize:
 	 */
 
 	cork->length += length;
-	if (((length > mtu) ||
-	     (skb && skb_is_gso(skb))) &&
+	if ((skb && skb_is_gso(skb)) ||
+	    (((length + fragheaderlen) > mtu) &&
+	    (skb_queue_len(&sk->sk_write_queue) <= 1) &&
 	    (sk->sk_protocol == IPPROTO_UDP) &&
 	    (rt->dst.dev->features & NETIF_F_UFO) &&
-	    (sk->sk_type == SOCK_DGRAM) && !udp_get_no_check6_tx(sk)) {
+	    (sk->sk_type == SOCK_DGRAM) && !udp_get_no_check6_tx(sk))) {
 		err = ip6_ufo_append_data(sk, queue, getfrag, from, length,
 					  hh_len, fragheaderlen, exthdrlen,
 					  transhdrlen, mtu, flags, fl6);
@@ -1778,10 +1788,13 @@ struct sk_buff *ip6_make_skb(struct sock *sk,
 	cork.base.flags = 0;
 	cork.base.addr = 0;
 	cork.base.opt = NULL;
+	cork.base.dst = NULL;
 	v6_cork.opt = NULL;
 	err = ip6_setup_cork(sk, &cork, &v6_cork, hlimit, tclass, opt, rt, fl6);
-	if (err)
+	if (err) {
+		ip6_cork_release(&cork, &v6_cork);
 		return ERR_PTR(err);
+	}
 
 	if (dontfrag < 0)
 		dontfrag = inet6_sk(sk)->dontfrag;

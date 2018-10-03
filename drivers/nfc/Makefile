@@ -1,6 +1,9 @@
 #
 # Makefile for nfc devices
 #
+ifneq ($(SEC_BUILD_CONF_USE_ESE_TZ), false)
+	ccflags-y += -DENABLE_ESE_SPI_SECURED
+endif
 
 obj-$(CONFIG_NFC_FDP)		+= fdp/
 obj-$(CONFIG_NFC_PN544)		+= pn544/
@@ -16,3 +19,8 @@ obj-$(CONFIG_NFC_ST21NFCA)  	+= st21nfca/
 obj-$(CONFIG_NFC_ST_NCI)	+= st-nci/
 obj-$(CONFIG_NFC_NXP_NCI)	+= nxp-nci/
 obj-$(CONFIG_NFC_S3FWRN5)	+= s3fwrn5/
+obj-$(CONFIG_NFC_NQ)		+= nq-nci.o
+obj-$(CONFIG_NFC_PN547_ESE_SUPPORT)        += p61.o
+obj-$(CONFIG_NFC_PN547)		+= pn547.o
+obj-$(CONFIG_SEC_NFC)		+= sec_nfc.o
+obj-y		+= nfc_logger/

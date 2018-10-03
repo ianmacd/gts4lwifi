@@ -1269,7 +1269,7 @@ SYSCALL_DEFINE1(shmdt, char __user *, shmaddr)
 	int retval = -EINVAL;
 #ifdef CONFIG_MMU
 	loff_t size = 0;
-	struct file *file;
+	struct file *file = NULL;
 	struct vm_area_struct *next;
 #endif
 

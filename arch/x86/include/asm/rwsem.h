@@ -99,7 +99,7 @@ static inline int __down_read_trylock(struct rw_semaphore *sem)
 /*
  * lock for writing
  */
-static inline void __down_write_nested(struct rw_semaphore *sem, int subclass)
+static inline void __down_write(struct rw_semaphore *sem)
 {
 	long tmp;
 	asm volatile("# beginning down_write\n\t"
@@ -114,11 +114,6 @@ static inline void __down_write_nested(struct rw_semaphore *sem, int subclass)
 		     : "+m" (sem->count), "=d" (tmp)
 		     : "a" (sem), "1" (RWSEM_ACTIVE_WRITE_BIAS)
 		     : "memory", "cc");
-}
-
-static inline void __down_write(struct rw_semaphore *sem)
-{
-	__down_write_nested(sem, 0);
 }
 
 /*
@@ -201,24 +196,6 @@ static inline void __downgrade_write(struct rw_semaphore *sem)
 		     : "+m" (sem->count)
 		     : "a" (sem), "er" (-RWSEM_WAITING_BIAS)
 		     : "memory", "cc");
-}
-
-/*
- * implement atomic add functionality
- */
-static inline void rwsem_atomic_add(long delta, struct rw_semaphore *sem)
-{
-	asm volatile(LOCK_PREFIX _ASM_ADD "%1,%0"
-		     : "+m" (sem->count)
-		     : "er" (delta));
-}
-
-/*
- * implement exchange and add functionality
- */
-static inline long rwsem_atomic_update(long delta, struct rw_semaphore *sem)
-{
-	return delta + xadd(&sem->count, delta);
 }
 
 #endif /* __KERNEL__ */

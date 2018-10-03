@@ -1,7 +1,6 @@
 #
 # Makefile for misc devices that really don't fit anywhere else.
 #
-
 obj-$(CONFIG_IBM_ASM)		+= ibmasm/
 obj-$(CONFIG_AD525X_DPOT)	+= ad525x_dpot.o
 obj-$(CONFIG_AD525X_DPOT_I2C)	+= ad525x_dpot-i2c.o
@@ -53,6 +52,25 @@ obj-$(CONFIG_LATTICE_ECP3_CONFIG)	+= lattice-ecp3-config.o
 obj-$(CONFIG_SRAM)		+= sram.o
 obj-y				+= mic/
 obj-$(CONFIG_GENWQE)		+= genwqe/
+obj-$(CONFIG_QSEECOM) += qseecom.o
+obj-$(CONFIG_PROFILER) += profiler.o
+obj-$(CONFIG_HDCP_QSEECOM) += hdcp.o
+ifdef CONFIG_COMPAT
+obj-$(CONFIG_QSEECOM) += compat_qseecom.o
+endif
+obj-$(CONFIG_QSEECOM)  += tzic64.o
 obj-$(CONFIG_ECHO)		+= echo/
 obj-$(CONFIG_VEXPRESS_SYSCFG)	+= vexpress-syscfg.o
 obj-$(CONFIG_CXL_BASE)		+= cxl/
+obj-$(CONFIG_UID_SYS_STATS) += uid_sys_stats.o
+obj-y				+= qcom/
+obj-$(CONFIG_QPNP_MISC) 	+= qpnp-misc.o
+obj-$(CONFIG_MEMORY_STATE_TIME) += memory_state_time.o
+obj-$(CONFIG_TIMA_LOG)		+= tima_debug_log.o
+
+obj-$(CONFIG_SEC_BSP) += sec_misc.o sec_param.o
+
+# for DMVerity
+obj-$(CONFIG_DM_VERITY)		+= dmverity_query.o
+
+obj-$(CONFIG_RKP_CFP_TEST)	+= cfp_test.o

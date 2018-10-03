@@ -1715,6 +1715,7 @@ static inline int f2fs_add_link(struct dentry *dentry, struct inode *inode)
  * super.c
  */
 int f2fs_commit_super(struct f2fs_sb_info *, bool);
+loff_t max_file_size(unsigned bits);
 int f2fs_sync_fs(struct super_block *, int);
 extern __printf(3, 4)
 void f2fs_msg(struct super_block *, const char *, const char *, ...);
@@ -2150,6 +2151,7 @@ void f2fs_end_io_crypto_work(struct f2fs_crypto_ctx *, struct bio *);
 
 /* crypto_key.c */
 void f2fs_free_encryption_info(struct inode *, struct f2fs_crypt_info *);
+int _f2fs_get_encryption_info(struct inode *inode);
 
 /* crypto_fname.c */
 bool f2fs_valid_filenames_enc_mode(uint32_t);
@@ -2170,7 +2172,18 @@ void f2fs_exit_crypto(void);
 
 int f2fs_has_encryption_key(struct inode *);
 
-int f2fs_get_encryption_info(struct inode *inode);
+static inline int f2fs_get_encryption_info(struct inode *inode)
+{
+	struct f2fs_crypt_info *ci = F2FS_I(inode)->i_crypt_info;
+
+	if (!ci ||
+		(ci->ci_keyring_key &&
+		 (ci->ci_keyring_key->flags & ((1 << KEY_FLAG_INVALIDATED) |
+					       (1 << KEY_FLAG_REVOKED) |
+					       (1 << KEY_FLAG_DEAD)))))
+		return _f2fs_get_encryption_info(inode);
+	return 0;
+}
 
 void f2fs_fname_crypto_free_buffer(struct f2fs_str *);
 int f2fs_fname_setup_filename(struct inode *, const struct qstr *,

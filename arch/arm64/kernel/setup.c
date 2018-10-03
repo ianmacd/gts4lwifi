@@ -44,6 +44,7 @@
 #include <linux/of_platform.h>
 #include <linux/efi.h>
 #include <linux/psci.h>
+#include <linux/dma-mapping.h>
 
 #include <asm/acpi.h>
 #include <asm/fixmap.h>
@@ -62,9 +63,29 @@
 #include <asm/memblock.h>
 #include <asm/efi.h>
 #include <asm/xen/hypervisor.h>
+#include <asm/mmu_context.h>
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/qcom/sec_debug.h>
+#endif
+
+// [ SEC_SELINUX_PORTING_QUALCOMM
+#ifdef CONFIG_PROC_AVC
+#include <linux/proc_avc.h>
+#endif
+// ] SEC_SELINUX_PORTING_QUALCOMM
+
+unsigned int boot_reason;
+EXPORT_SYMBOL(boot_reason);
+
+unsigned int cold_boot;
+EXPORT_SYMBOL(cold_boot);
+
+unsigned int system_rev;
+EXPORT_SYMBOL(system_rev);
 
 phys_addr_t __fdt_pointer __initdata;
 
+const char *machine_name;
 /*
  * Standard memory resources
  */
@@ -174,7 +195,6 @@ static void __init smp_build_mpidr_hash(void)
 	 */
 	if (mpidr_hash_size() > 4 * num_possible_cpus())
 		pr_warn("Large number of MPIDR hash buckets detected\n");
-	__flush_dcache_area(&mpidr_hash, sizeof(struct mpidr_hash));
 }
 
 static void __init setup_machine_fdt(phys_addr_t dt_phys)
@@ -192,8 +212,20 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 			cpu_relax();
 	}
 
-	dump_stack_set_arch_desc("%s (DT)", of_flat_dt_get_machine_name());
+	machine_name = of_flat_dt_get_machine_name();
+	if (machine_name) {
+		dump_stack_set_arch_desc("%s (DT)", machine_name);
+		pr_info("Machine: %s\n", machine_name);
+	}
 }
+
+static int __init msm_hw_rev_setup(char *p)
+{
+	system_rev = memparse(p, NULL);
+	printk("androidboot.revision %x", system_rev);
+	return 0;
+}
+early_param("androidboot.revision", msm_hw_rev_setup);
 
 static void __init request_standard_resources(void)
 {
@@ -201,7 +233,7 @@ static void __init request_standard_resources(void)
 	struct resource *res;
 
 	kernel_code.start   = virt_to_phys(_text);
-	kernel_code.end     = virt_to_phys(_etext - 1);
+	kernel_code.end     = virt_to_phys(__init_begin - 1);
 	kernel_data.start   = virt_to_phys(_sdata);
 	kernel_data.end     = virt_to_phys(_end - 1);
 
@@ -288,6 +320,8 @@ static inline void __init relocate_initrd(void)
 
 u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
 
+void __init __weak init_random_pool(void) { }
+
 void __init setup_arch(char **cmdline_p)
 {
 	pr_info("Boot CPU: AArch64 Processor [%08x]\n", read_cpuid_id());
@@ -312,6 +346,12 @@ void __init setup_arch(char **cmdline_p)
 	 * (Report possible System Errors once we can report this occurred)
 	 */
 	local_async_enable();
+
+	/*
+	 * TTBR0 is only used for the identity mapping at this stage. Make it
+	 * point to zero page to avoid speculatively fetching new entries.
+	 */
+	cpu_uninstall_idmap();
 
 	efi_init();
 	arm64_memblock_init();
@@ -340,6 +380,15 @@ void __init setup_arch(char **cmdline_p)
 	smp_init_cpus();
 	smp_build_mpidr_hash();
 
+#ifdef CONFIG_ARM64_SW_TTBR0_PAN
+	/*
+	 * Make sure init_thread_info.ttbr0 always generates translation
+	 * faults in case uaccess_enable() is inadvertently called by the init
+	 * thread.
+	 */
+	init_thread_info.ttbr0 = virt_to_phys(empty_zero_page);
+#endif
+
 #ifdef CONFIG_VT
 #if defined(CONFIG_VGA_CONSOLE)
 	conswitchp = &vga_con;
@@ -347,16 +396,28 @@ void __init setup_arch(char **cmdline_p)
 	conswitchp = &dummy_con;
 #endif
 #endif
+	init_random_pool();
+#if !(defined(CONFIG_RELOCATABLE_KERNEL) || defined(CONFIG_RANDOMIZE_BASE))
 	if (boot_args[1] || boot_args[2] || boot_args[3]) {
 		pr_err("WARNING: x1-x3 nonzero in violation of boot protocol:\n"
 			"\tx1: %016llx\n\tx2: %016llx\n\tx3: %016llx\n"
 			"This indicates a broken bootloader or old kernel\n",
 			boot_args[1], boot_args[2], boot_args[3]);
 	}
+#endif
 }
 
 static int __init arm64_device_init(void)
 {
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_init();
+#endif
+// [ SEC_SELINUX_PORTING_QUALCOMM
+#ifdef CONFIG_PROC_AVC
+        sec_avc_log_init();
+#endif
+// ] SEC_SELINUX_PORTING_QUALCOMM
+
 	if (of_have_populated_dt()) {
 		of_iommu_init();
 		of_platform_populate(NULL, of_default_bus_match_table,
@@ -380,4 +441,39 @@ static int __init topology_init(void)
 
 	return 0;
 }
-subsys_initcall(topology_init);
+postcore_initcall(topology_init);
+
+void arch_setup_pdev_archdata(struct platform_device *pdev)
+{
+	pdev->archdata.dma_mask = DMA_BIT_MASK(32);
+	pdev->dev.dma_mask = &pdev->archdata.dma_mask;
+}
+
+/*
+ * Dump out kernel offset information on panic.
+ */
+static int dump_kernel_offset(struct notifier_block *self, unsigned long v,
+			      void *p)
+{
+	u64 const kaslr_offset = kimage_vaddr - KIMAGE_VADDR;
+
+	if (IS_ENABLED(CONFIG_RANDOMIZE_BASE) && kaslr_offset > 0) {
+		pr_emerg("Kernel Offset: 0x%llx from 0x%lx\n",
+			 kaslr_offset, KIMAGE_VADDR);
+	} else {
+		pr_emerg("Kernel Offset: disabled\n");
+	}
+	return 0;
+}
+
+static struct notifier_block kernel_offset_notifier = {
+	.notifier_call = dump_kernel_offset
+};
+
+static int __init register_kernel_offset_dumper(void)
+{
+	atomic_notifier_chain_register(&panic_notifier_list,
+				       &kernel_offset_notifier);
+	return 0;
+}
+__initcall(register_kernel_offset_dumper);

@@ -40,6 +40,13 @@ static DEFINE_MUTEX(zram_index_mutex);
 static int zram_major;
 static const char *default_compressor = "lzo";
 
+/*
+ * We don't need to see memory allocation errors more than once every 1
+ * second to know that a problem is occurring.
+ */
+#define ALLOC_ERROR_LOG_RATE_MS 1000
+
+
 /* Module params (documentation at end) */
 static unsigned int num_devices = 1;
 
@@ -514,7 +521,7 @@ static struct zram_meta *zram_meta_alloc(char *pool_name, u64 disksize)
 		goto out_error;
 	}
 
-	meta->mem_pool = zs_create_pool(pool_name, GFP_NOIO | __GFP_HIGHMEM);
+	meta->mem_pool = zs_create_pool(pool_name);
 	if (!meta->mem_pool) {
 		pr_err("Error creating memory pool\n");
 		goto out_error;
@@ -656,6 +663,7 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 	struct zram_meta *meta = zram->meta;
 	struct zcomp_strm *zstrm = NULL;
 	unsigned long alloced_pages;
+	static unsigned long zram_rs_time;
 
 	page = bvec->bv_page;
 	if (is_partial_io(bvec)) {
@@ -717,10 +725,14 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 			src = uncmem;
 	}
 
-	handle = zs_malloc(meta->mem_pool, clen);
+	handle = zs_malloc(meta->mem_pool, clen, GFP_NOIO | __GFP_HIGHMEM |
+				__GFP_MOVABLE);
 	if (!handle) {
-		pr_err("Error allocating memory for compressed page: %u, size=%zu\n",
-			index, clen);
+		if (printk_timed_ratelimit(&zram_rs_time,
+					   ALLOC_ERROR_LOG_RATE_MS))
+			pr_info("Error allocating memory for compressed page: %u, size=%zu\n",
+				index, clen);
+
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -1232,6 +1244,7 @@ static int zram_add(void)
 	zram->disk->private_data = zram;
 	snprintf(zram->disk->disk_name, 16, "zram%d", device_id);
 
+	__set_bit(QUEUE_FLAG_FAST, &queue->queue_flags);
 	/* Actual capacity set using syfs (/sys/block/zram<id>/disksize */
 	set_capacity(zram->disk, 0);
 	/* zram devices sort of resembles non-rotational disks */

@@ -45,7 +45,7 @@ static int stmpe_gpio_get(struct gpio_chip *chip, unsigned offset)
 {
 	struct stmpe_gpio *stmpe_gpio = to_stmpe_gpio(chip);
 	struct stmpe *stmpe = stmpe_gpio->stmpe;
-	u8 reg = stmpe->regs[STMPE_IDX_GPMR_LSB] - (offset / 8);
+	u8 reg = stmpe->regs[STMPE_IDX_GPMR_LSB] + (offset / 8);
 	u8 mask = 1 << (offset % 8);
 	int ret;
 
@@ -61,8 +61,10 @@ static void stmpe_gpio_set(struct gpio_chip *chip, unsigned offset, int val)
 	struct stmpe_gpio *stmpe_gpio = to_stmpe_gpio(chip);
 	struct stmpe *stmpe = stmpe_gpio->stmpe;
 	int which = val ? STMPE_IDX_GPSR_LSB : STMPE_IDX_GPCR_LSB;
-	u8 reg = stmpe->regs[which] - (offset / 8);
+	u8 reg = stmpe->regs[which] + (offset / 8);
 	u8 mask = 1 << (offset % 8);
+
+	pr_info("[STMGPIO]: %s, reg %x offset %d val %d mask %x(%d)\n", __func__,reg ,offset,val ,mask, offset %8);
 
 	/*
 	 * Some variants have single register for gpio set/clear functionality.
@@ -79,8 +81,9 @@ static int stmpe_gpio_direction_output(struct gpio_chip *chip,
 {
 	struct stmpe_gpio *stmpe_gpio = to_stmpe_gpio(chip);
 	struct stmpe *stmpe = stmpe_gpio->stmpe;
-	u8 reg = stmpe->regs[STMPE_IDX_GPDR_LSB] - (offset / 8);
+	u8 reg = stmpe->regs[STMPE_IDX_GPDR_LSB] + (offset / 8);
 	u8 mask = 1 << (offset % 8);
+	pr_info("[STMGPIO]: %s, stmpe_gpio_direction_output reg %x offset %d val %d mask %x\n", __func__,reg,offset,val, mask);
 
 	stmpe_gpio_set(chip, offset, val);
 
@@ -92,8 +95,9 @@ static int stmpe_gpio_direction_input(struct gpio_chip *chip,
 {
 	struct stmpe_gpio *stmpe_gpio = to_stmpe_gpio(chip);
 	struct stmpe *stmpe = stmpe_gpio->stmpe;
-	u8 reg = stmpe->regs[STMPE_IDX_GPDR_LSB] - (offset / 8);
+	u8 reg = stmpe->regs[STMPE_IDX_GPDR_LSB] + (offset / 8);
 	u8 mask = 1 << (offset % 8);
+	pr_info("[STMGPIO]: %s, stmpe_gpio_direction_input reg %x offset %d\n", __func__,reg,offset );
 
 	return stmpe_set_bits(stmpe, reg, mask, 0);
 }
@@ -221,7 +225,7 @@ static void stmpe_dbg_show_one(struct seq_file *s,
 	const char *label = gpiochip_is_requested(gc, offset);
 	int num_banks = DIV_ROUND_UP(stmpe->num_gpios, 8);
 	bool val = !!stmpe_gpio_get(gc, offset);
-	u8 dir_reg = stmpe->regs[STMPE_IDX_GPDR_LSB] - (offset / 8);
+	u8 dir_reg = stmpe->regs[STMPE_IDX_GPDR_LSB] + (offset / 8);
 	u8 mask = 1 << (offset % 8);
 	int ret;
 	u8 dir;
@@ -237,9 +241,9 @@ static void stmpe_dbg_show_one(struct seq_file *s,
 			   val ? "hi" : "lo");
 	} else {
 		u8 edge_det_reg = stmpe->regs[STMPE_IDX_GPEDR_MSB] + num_banks - 1 - (offset / 8);
-		u8 rise_reg = stmpe->regs[STMPE_IDX_GPRER_LSB] - (offset / 8);
-		u8 fall_reg = stmpe->regs[STMPE_IDX_GPFER_LSB] - (offset / 8);
-		u8 irqen_reg = stmpe->regs[STMPE_IDX_IEGPIOR_LSB] - (offset / 8);
+		u8 rise_reg = stmpe->regs[STMPE_IDX_GPRER_LSB] + (offset / 8);
+		u8 fall_reg = stmpe->regs[STMPE_IDX_GPFER_LSB] + (offset / 8);
+		u8 irqen_reg = stmpe->regs[STMPE_IDX_IEGPIOR_LSB] + (offset / 8);
 		bool edge_det;
 		bool rise;
 		bool fall;
@@ -380,30 +384,33 @@ static int stmpe_gpio_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "unable to add gpiochip: %d\n", ret);
 		goto out_disable;
 	}
+	
+	/*stmpe1801 havenot used the gpio irq function, so donot request irq*/
+	if (stmpe->partnum != STMPE1801){
+		if (irq > 0) {
+			ret = devm_request_threaded_irq(&pdev->dev, irq, NULL,
+					stmpe_gpio_irq, IRQF_ONESHOT,
+					"stmpe-gpio", stmpe_gpio);
+			if (ret) {
+				dev_err(&pdev->dev, "unable to get irq: %d\n", ret);
+				goto out_disable;
+			}
+			ret =  gpiochip_irqchip_add(&stmpe_gpio->chip,
+						    &stmpe_gpio_irq_chip,
+						    0,
+						    handle_simple_irq,
+						    IRQ_TYPE_NONE);
+			if (ret) {
+				dev_err(&pdev->dev,
+					"could not connect irqchip to gpiochip\n");
+				goto out_disable;
+			}
 
-	if (irq > 0) {
-		ret = devm_request_threaded_irq(&pdev->dev, irq, NULL,
-				stmpe_gpio_irq, IRQF_ONESHOT,
-				"stmpe-gpio", stmpe_gpio);
-		if (ret) {
-			dev_err(&pdev->dev, "unable to get irq: %d\n", ret);
-			goto out_disable;
+			gpiochip_set_chained_irqchip(&stmpe_gpio->chip,
+						     &stmpe_gpio_irq_chip,
+						     irq,
+						     NULL);
 		}
-		ret =  gpiochip_irqchip_add(&stmpe_gpio->chip,
-					    &stmpe_gpio_irq_chip,
-					    0,
-					    handle_simple_irq,
-					    IRQ_TYPE_NONE);
-		if (ret) {
-			dev_err(&pdev->dev,
-				"could not connect irqchip to gpiochip\n");
-			goto out_disable;
-		}
-
-		gpiochip_set_chained_irqchip(&stmpe_gpio->chip,
-					     &stmpe_gpio_irq_chip,
-					     irq,
-					     NULL);
 	}
 
 	platform_set_drvdata(pdev, stmpe_gpio);
@@ -439,6 +446,7 @@ static struct platform_driver stmpe_gpio_driver = {
 
 static int __init stmpe_gpio_init(void)
 {
+	pr_info("[STMGPIO]: %s \n", __func__ );
 	return platform_driver_register(&stmpe_gpio_driver);
 }
 subsys_initcall(stmpe_gpio_init);

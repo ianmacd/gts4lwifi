@@ -73,6 +73,10 @@ void tk_debug_account_sleep_time(struct timespec64 *t)
 {
 	/* Cap bin index so we don't overflow the array */
 	int bin = min(fls(t->tv_sec), NUM_BINS-1);
+#ifdef CONFIG_SEC_PM_DEBUG
+	printk("Suspended for %lu.%03lu seconds\n",
+			t->tv_sec, t->tv_nsec / NSEC_PER_MSEC);
+#endif
 
 	sleep_time_bin[bin]++;
 }

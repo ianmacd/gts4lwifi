@@ -104,6 +104,39 @@ fw-shipped-$(CONFIG_USB_EMI62) += emi62/loader.fw emi62/bitstream.fw \
 fw-shipped-$(CONFIG_USB_KAWETH) += kaweth/new_code.bin kaweth/trigger_code.bin \
 				   kaweth/new_code_fix.bin \
 				   kaweth/trigger_code_fix.bin
+
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS) += tsp_stm/fts8cd56_dream2.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS) += tsp_stm/fts8cd56_dream2_old.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS) += tsp_stm/fts9cd56_dream1.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS1BA90A) += tsp_stm/fts1ba90a_gts4.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/y761_dream1.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/y761_dream1_nosync.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/y761_cruiser.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS_Y661) += tsp_sec/y661_great.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS_Y661_DUAL) += tsp_sec/sec_kelly.fw tsp_sec/y661_kelly.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_DSX2) += tsp_synaptics/s5807_gts3llte.fw
+fw-shipped-$(CONFIG_KEYBOARD_ABOV_TOUCH_FOLDER) += abov/abov_tk_kelly.fw
+
+ifdef CONFIG_SEC_GREATQLTE_PROJECT
+fw-shipped-$(CONFIG_EPEN_WACOM_W9018) += epen/w9018_great.fw \
+					 epen/w9018_great_1coil.fw
+ifdef CONFIG_SEC_FACTORY
+fw-shipped-$(CONFIG_EPEN_WACOM_W9018) += epen/w9018_great_fac.fw
+endif
+endif
+
+ifdef CONFIG_SEC_GTS4LLTE_PROJECT
+fw-shipped-$(CONFIG_EPEN_WACOM_W9019) += epen/w9019_gts3l.fw
+fw-shipped-$(CONFIG_EPEN_WACOM_W9019) += epen/w9019_gts4l.fw
+endif
+
+ifdef CONFIG_SEC_GTS4LWIFI_PROJECT
+fw-shipped-$(CONFIG_EPEN_WACOM_W9019) += epen/w9019_gts3l.fw
+fw-shipped-$(CONFIG_EPEN_WACOM_W9019) += epen/w9019_gts4l.fw
+endif
+
+fw-shipped-$(CONFIG_WIRELESS_FIRMWARE_UPDATE) += mfc/mfc_fw_flash.bin
+
 ifdef CONFIG_FIRMWARE_IN_KERNEL
 fw-shipped-$(CONFIG_USB_SERIAL_KEYSPAN_MPR) += keyspan/mpr.fw
 fw-shipped-$(CONFIG_USB_SERIAL_KEYSPAN_USA18X) += keyspan/usa18x.fw
@@ -135,6 +168,13 @@ fw-shipped-$(CONFIG_USB_SERIAL_XIRCOM) += keyspan_pda/xircom_pgs.fw
 fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
+#FPGA
+fw-shipped-$(CONFIG_SPI_TO_I2C_FPGA) += fpga/spi_to_i2c_bitmap.fw
+fw-shipped-$(CONFIG_POGO_FPGA) += fpga/pogo_fpga.fw
+fw-shipped-$(CONFIG_SEC_ICE40XX_IRIS) += fpga/iris_fpga.fw
+
+fw-shipped-$(CONFIG_FIVE_TEE_DRIVER) += five.b00 five.b01 five.b02 five.b03 \
+				  five.b04 five.b05 five.b06 five.b07 five.mdt
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 

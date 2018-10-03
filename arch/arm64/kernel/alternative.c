@@ -108,7 +108,7 @@ static void __apply_alternatives(void *alt_region)
 
 		for (i = 0; i < nr_inst; i++) {
 			insn = get_alt_insn(alt, origptr + i, replptr + i);
-			*(origptr + i) = cpu_to_le32(insn);
+			BUG_ON(aarch64_insn_patch_text_nosync(origptr + i, insn));
 		}
 
 		flush_icache_range((uintptr_t)origptr,
@@ -157,10 +157,4 @@ void apply_alternatives(void *start, size_t length)
 	};
 
 	__apply_alternatives(&region);
-}
-
-void free_alternatives_memory(void)
-{
-	free_reserved_area(__alt_instructions, __alt_instructions_end,
-			   0, "alternatives");
 }

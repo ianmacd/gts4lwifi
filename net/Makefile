@@ -77,3 +77,6 @@ endif
 ifneq ($(CONFIG_NET_L3_MASTER_DEV),)
 obj-y				+= l3mdev/
 endif
+obj-$(CONFIG_IPC_ROUTER)	+= ipc_router/
+obj-$(CONFIG_RMNET_DATA) += rmnet_data/
+obj-$(CONFIG_KNOX_NCM)	+= ncm/

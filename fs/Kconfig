@@ -8,11 +8,16 @@ menu "File systems"
 config DCACHE_WORD_ACCESS
        bool
 
+config INTERRUPTIBLE_SYNC
+	bool "Support interruptible sync for Samsung Mobile Device"
+	default y
+
 if BLOCK
 
 source "fs/ext2/Kconfig"
 source "fs/ext4/Kconfig"
 source "fs/jbd2/Kconfig"
+source "fs/sdcardfs/Kconfig"
 
 config FS_MBCACHE
 # Meta block cache for Extended Attributes (ext2/ext3/ext4)
@@ -101,6 +106,7 @@ if BLOCK
 menu "DOS/FAT/NT Filesystems"
 
 source "fs/fat/Kconfig"
+source "fs/sdfat/Kconfig"
 source "fs/ntfs/Kconfig"
 
 endmenu
@@ -280,5 +286,10 @@ endif # NETWORK_FILESYSTEMS
 
 source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
+
+config FILE_TABLE_DEBUG
+	bool "Enable FILE_TABLE_DEBUG"
+	help
+	  This option enables debug of the open files using a global filetable
 
 endmenu

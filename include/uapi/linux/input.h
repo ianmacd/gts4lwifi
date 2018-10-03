@@ -19,6 +19,99 @@
 #include "input-event-codes.h"
 
 /*
+ * sec Log
+ */
+#define SECLOG			"[sec_input]"
+#define INPUT_LOG_BUF_SIZE	512
+
+#ifdef CONFIG_SEC_DEBUG_TSP_LOG
+#include <linux/input/sec_tsp_log.h>
+
+#define input_dbg(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_dbg(dev, input_log_buf, ## __VA_ARGS__);				\
+	if (mode) {								\
+		if (dev)							\
+			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s",	\
+					dev_driver_string(dev), dev_name(dev));	\
+		else								\
+			snprintf(input_log_buf, sizeof(input_log_buf), "NULL");	\
+		sec_debug_tsp_log_msg(input_log_buf, fmt, ## __VA_ARGS__);	\
+	}									\
+})
+#define input_info(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_info(dev, input_log_buf, ## __VA_ARGS__);				\
+	if (mode) {								\
+		if (dev)							\
+			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s",	\
+					dev_driver_string(dev), dev_name(dev));	\
+		else								\
+			snprintf(input_log_buf, sizeof(input_log_buf), "NULL");	\
+		sec_debug_tsp_log_msg(input_log_buf, fmt, ## __VA_ARGS__);	\
+	}									\
+})
+#define input_err(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_err(dev, input_log_buf, ## __VA_ARGS__);				\
+	if (mode) {								\
+		if (dev)							\
+			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s",	\
+					dev_driver_string(dev), dev_name(dev));	\
+		else								\
+			snprintf(input_log_buf, sizeof(input_log_buf), "NULL");	\
+		sec_debug_tsp_log_msg(input_log_buf, fmt, ## __VA_ARGS__);	\
+	}									\
+})
+#define input_raw_info(mode, dev, fmt, ...)					\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_info(dev, input_log_buf, ## __VA_ARGS__);				\
+	if (mode) {								\
+		if (dev)							\
+			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", \
+					dev_driver_string(dev), dev_name(dev)); \
+		else								\
+			snprintf(input_log_buf, sizeof(input_log_buf), "NULL"); \
+		sec_debug_tsp_log_msg(input_log_buf, fmt, ## __VA_ARGS__);	\
+		sec_debug_tsp_raw_data_msg(input_log_buf, fmt, ## __VA_ARGS__);	\
+	}									\
+})
+#define input_log_fix()	sec_tsp_log_fix()
+#define input_raw_data_clear() sec_tsp_raw_data_clear()
+#else
+#define input_dbg(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_dbg(dev, input_log_buf, ## __VA_ARGS__);				\
+})
+#define input_info(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_info(dev, input_log_buf, ## __VA_ARGS__);				\
+})
+#define input_err(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_err(dev, input_log_buf, ## __VA_ARGS__);				\
+})
+#define input_raw_info(mode, dev, fmt, ...) input_info(mode, dev, fmt, ## __VA_ARGS__)
+#define input_log_fix()	{}
+#define input_raw_data_clear() {}
+#endif
+
+
+/*
  * The event structure itself
  */
 
@@ -161,6 +254,50 @@ struct input_mask {
 #define EVIOCGRAB		_IOW('E', 0x90, int)			/* Grab/Release device */
 #define EVIOCREVOKE		_IOW('E', 0x91, int)			/* Revoke device access */
 
+#define EVIOCSCLOCKID		_IOW('E', 0xa0, int)			/* Set clockid to be used for timestamps */
+
+/*
+ * Device properties and quirks
+ */
+
+/* HACK: disable conflicting EVIOCREVOKE until Android userspace stops using EVIOCSSUSPENDBLOCK */
+/*#define EVIOCREVOKE		_IOW('E', 0x91, int)*/			/* Revoke device access */
+
+#define INPUT_PROP_POINTER		0x00	/* needs a pointer */
+#define INPUT_PROP_DIRECT		0x01	/* direct input devices */
+#define INPUT_PROP_BUTTONPAD		0x02	/* has button(s) under pad */
+#define INPUT_PROP_SEMI_MT		0x03	/* touch rectangle only */
+#define INPUT_PROP_TOPBUTTONPAD		0x04	/* softbuttons at top of pad */
+#define INPUT_PROP_POINTING_STICK	0x05	/* is a pointing stick */
+#define INPUT_PROP_NO_DUMMY_RELEASE	0x06	/* no dummy event */
+
+#define INPUT_PROP_MAX			0x1f
+#define INPUT_PROP_CNT			(INPUT_PROP_MAX + 1)
+
+/*
+ * Event types
+ */
+
+#define EV_SYN			0x00
+#define EV_KEY			0x01
+#define EV_REL			0x02
+#define EV_ABS			0x03
+#define EV_MSC			0x04
+#define EV_SW			0x05
+#define EV_LED			0x11
+#define EV_SND			0x12
+#define EV_REP			0x14
+#define EV_FF			0x15
+#define EV_PWR			0x16
+#define EV_FF_STATUS		0x17
+#define EV_MAX			0x1f
+#define EV_CNT			(EV_MAX+1)
+
+/*
+ * Synchronization events.
+ */
+
+
 /**
  * EVIOCGMASK - Retrieve current event mask
  *
@@ -216,6 +353,13 @@ struct input_mask {
 #define EVIOCSMASK		_IOW('E', 0x93, struct input_mask)	/* Set event-masks */
 
 #define EVIOCSCLOCKID		_IOW('E', 0xa0, int)			/* Set clockid to be used for timestamps */
+
+#define ABS_MT_PALM		0x3e	/* palm touch */
+/*
+ * Switch events
+ */
+#define SW_FLIP                 0x15  /* set = flip cover open, close*/
+#define SW_CERTIFYHALL          0x1b  /* set = certify_hall attach/detach */
 
 /*
  * IDs.

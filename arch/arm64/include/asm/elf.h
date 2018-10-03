@@ -23,15 +23,7 @@
  */
 #include <asm/ptrace.h>
 #include <asm/user.h>
-
-typedef unsigned long elf_greg_t;
-
-#define ELF_NGREG (sizeof(struct user_pt_regs) / sizeof(elf_greg_t))
-#define ELF_CORE_COPY_REGS(dest, regs)	\
-	*(struct user_pt_regs *)&(dest) = (regs)->user_regs;
-
-typedef elf_greg_t elf_gregset_t[ELF_NGREG];
-typedef struct user_fpsimd_state elf_fpregset_t;
+#include <asm/fpsimd.h>
 
 /*
  * AArch64 static relocation types.
@@ -86,6 +78,8 @@ typedef struct user_fpsimd_state elf_fpregset_t;
 #define R_AARCH64_MOVW_PREL_G2_NC	292
 #define R_AARCH64_MOVW_PREL_G3		293
 
+#define R_AARCH64_RELATIVE		1027
+
 /*
  * These are used to set parameters in the core dumps.
  */
@@ -125,6 +119,17 @@ typedef struct user_fpsimd_state elf_fpregset_t;
  * space open for things that want to use the area for 32-bit pointers.
  */
 #define ELF_ET_DYN_BASE		0x100000000UL
+
+#ifndef __ASSEMBLY__
+
+typedef unsigned long elf_greg_t;
+
+#define ELF_NGREG (sizeof(struct user_pt_regs) / sizeof(elf_greg_t))
+#define ELF_CORE_COPY_REGS(dest, regs)	\
+	*(struct user_pt_regs *)&(dest) = (regs)->user_regs;
+
+typedef elf_greg_t elf_gregset_t[ELF_NGREG];
+typedef struct user_fpsimd_state elf_fpregset_t;
 
 /*
  * When the program starts, a1 contains a pointer to a function to be
@@ -178,7 +183,11 @@ typedef compat_elf_greg_t		compat_elf_gregset_t[COMPAT_ELF_NGREG];
 					 ((x)->e_flags & EF_ARM_EABI_MASK))
 
 #define compat_start_thread		compat_start_thread
-#define COMPAT_SET_PERSONALITY(ex)	set_thread_flag(TIF_32BIT);
+#define COMPAT_SET_PERSONALITY(ex)					\
+do {									\
+	set_thread_flag(TIF_32BIT);					\
+} while (0)
+
 #define COMPAT_ARCH_DLINFO
 extern int aarch32_setup_vectors_page(struct linux_binprm *bprm,
 				      int uses_interp);
@@ -186,5 +195,7 @@ extern int aarch32_setup_vectors_page(struct linux_binprm *bprm,
 					aarch32_setup_vectors_page
 
 #endif /* CONFIG_COMPAT */
+
+#endif /* !__ASSEMBLY__ */
 
 #endif

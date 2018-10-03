@@ -20,7 +20,23 @@
 #include <linux/delay.h>
 #include <linux/export.h>
 #include <trace/events/asoc.h>
+#include <linux/switch.h>
 
+#ifdef CONFIG_SND_SOC_WCD_MBHC
+#define SEC_JACK_NO_DEVICE		0
+#define SEC_HEADSET_4POLE		1
+#define SEC_HEADSET_3POLE		2
+
+#define WCD_MBHC_JACK_MASK (SND_JACK_HEADSET | SND_JACK_OC_HPHL | \
+			   SND_JACK_OC_HPHR | SND_JACK_LINEOUT | \
+			   SND_JACK_MECHANICAL | SND_JACK_MICROPHONE2 | \
+			   SND_JACK_UNSUPPORTED)
+
+/* Android jack detection */
+struct switch_dev android_switch = {
+	.name = "h2w",
+};
+#endif
 /**
  * snd_soc_card_jack_new - Create a new jack
  * @card:  ASoC card
@@ -47,6 +63,12 @@ int snd_soc_card_jack_new(struct snd_soc_card *card, const char *id, int type,
 	INIT_LIST_HEAD(&jack->pins);
 	INIT_LIST_HEAD(&jack->jack_zones);
 	BLOCKING_INIT_NOTIFIER_HEAD(&jack->notifier);
+
+#ifdef CONFIG_SND_SOC_WCD_MBHC
+	if(!strcmp(id, "Headset Jack")) {
+		switch_dev_register(&android_switch);
+	}
+#endif
 
 	ret = snd_jack_new(card->snd_card, id, type, &jack->jack, false, false);
 	if (ret)
@@ -92,6 +114,19 @@ void snd_soc_jack_report(struct snd_soc_jack *jack, int status, int mask)
 	jack->status &= ~mask;
 	jack->status |= status & mask;
 
+#ifdef CONFIG_SND_SOC_WCD_MBHC
+	if (mask & WCD_MBHC_JACK_MASK) {
+		if (status == SEC_JACK_NO_DEVICE)
+			switch_set_state(&android_switch, SEC_JACK_NO_DEVICE);
+		else if (status == (SND_JACK_HEADPHONE | SND_JACK_MECHANICAL))
+			switch_set_state(&android_switch, SEC_HEADSET_3POLE);
+		else if (status == (SND_JACK_HEADSET | SND_JACK_MECHANICAL))
+			switch_set_state(&android_switch, SEC_HEADSET_4POLE);
+
+		dev_info(jack->card->dev,
+			"ASoC: mask = 0x%x status = 0x%x\n", mask, status);
+	}
+#endif
 	trace_snd_soc_jack_notify(jack, status);
 
 	list_for_each_entry(pin, &jack->pins, list) {

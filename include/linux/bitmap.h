@@ -114,6 +114,10 @@ extern int __bitmap_weight(const unsigned long *bitmap, unsigned int nbits);
 extern void bitmap_set(unsigned long *map, unsigned int start, int len);
 extern void bitmap_clear(unsigned long *map, unsigned int start, int len);
 
+extern unsigned long bitmap_find_next_zero_area_and_size(unsigned long *map,
+							 unsigned long size,
+							 unsigned long start,
+							 unsigned int *nr);
 extern unsigned long bitmap_find_next_zero_area_off(unsigned long *map,
 						    unsigned long size,
 						    unsigned long start,

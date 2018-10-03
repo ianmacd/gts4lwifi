@@ -332,7 +332,7 @@ replay:
 			nfnl_err_reset(&err_list);
 			status |= NFNL_BATCH_FAILURE;
 			goto done;
-		}
+ 		}
 
 		/* Only requests are handled by the kernel */
 		if (!(nlh->nlmsg_flags & NLM_F_REQUEST)) {

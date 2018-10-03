@@ -304,14 +304,35 @@ fence_remove_callback(struct fence *fence, struct fence_cb *cb)
 	spin_lock_irqsave(fence->lock, flags);
 
 	ret = !list_empty(&cb->node);
-	if (ret)
+	if (ret) {
 		list_del_init(&cb->node);
+		if (list_empty(&fence->cb_list))
+			if (fence->ops->disable_signaling)
+				fence->ops->disable_signaling(fence);
+	}
 
 	spin_unlock_irqrestore(fence->lock, flags);
 
 	return ret;
 }
 EXPORT_SYMBOL(fence_remove_callback);
+
+bool
+fence_remove_callback_locked(struct fence *fence, struct fence_cb *cb)
+{
+	bool ret;
+
+	ret = !list_empty(&cb->node);
+	if (ret) {
+		list_del_init(&cb->node);
+		if (list_empty(&fence->cb_list))
+			if (fence->ops->disable_signaling)
+				fence->ops->disable_signaling(fence);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(fence_remove_callback_locked);
 
 struct default_wait_cb {
 	struct fence_cb base;

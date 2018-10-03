@@ -33,7 +33,7 @@ config LBDAF
 	  This option is required to support the full capacity of large
 	  (2TB+) block devices, including RAID, disk, Network Block Device,
 	  Logical Volume Manager (LVM) and loopback.
-	
+
 	  This option also enables support for single files larger than
 	  2TB.
 
@@ -111,6 +111,27 @@ config BLK_CMDLINE_PARSER
 
 	See Documentation/block/cmdline-partition.txt for more information.
 
+config BLOCK_PERF_FRAMEWORK
+	bool "Enable Block device performance measurement framework"
+	default n
+	---help---
+	Enabling this option allows you to measure the performance at the
+	block layer.
+
+config JOURNAL_DATA_TAG
+	bool "Enable FS journal tagging for UFS & eMMC"
+	default n
+	---help---
+	Enable FS journal tagging for UFS & eMMC. If unsure, say N.
+
+config JOURNAL_DATA_TAG_DEBUG
+	bool "Enable FS journal tagging debug"
+	default n
+	depends on JOURNAL_DATA_TAG
+	---help---
+	Enable FS journal tagging debug. If unsure, say N.
+
+
 menu "Partition Types"
 
 source "block/partitions/Kconfig"
@@ -122,6 +143,11 @@ endif # BLOCK
 config BLOCK_COMPAT
 	bool
 	depends on BLOCK && COMPAT
+	default y
+
+config BLOCK_SUPPORT_STLOG
+	bool "Enable storage log"
+	depends on BLOCK && PROC_STLOG
 	default y
 
 source block/Kconfig.iosched

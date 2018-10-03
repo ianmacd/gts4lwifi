@@ -1773,6 +1773,8 @@ static void scsi_request_fn(struct request_queue *q)
 	struct scsi_cmnd *cmd;
 	struct request *req;
 
+	int temp_tag = 0;
+
 	/*
 	 * To start with, we keep looping until the queue is empty, or until
 	 * the host is no longer able to accept any more requests.
@@ -1805,6 +1807,8 @@ static void scsi_request_fn(struct request_queue *q)
 		if (!(blk_queue_tagged(q) && !blk_queue_start_tag(q, req)))
 			blk_start_request(req);
 
+		temp_tag = req->tag;
+		shost->SEC_req_logging[temp_tag].start_time = ktime_get();
 		spin_unlock_irq(q->queue_lock);
 		cmd = req->special;
 		if (unlikely(cmd == NULL)) {
@@ -1854,7 +1858,9 @@ static void scsi_request_fn(struct request_queue *q)
 		 * Dispatch the command to the low-level driver.
 		 */
 		cmd->scsi_done = scsi_done;
+		shost->SEC_req_logging[temp_tag].pre_dispatch_time = ktime_get();
 		rtn = scsi_dispatch_cmd(cmd);
+		shost->SEC_req_logging[temp_tag].post_dispatch_time = ktime_get();
 		if (rtn) {
 			scsi_queue_insert(cmd, rtn);
 			spin_lock_irq(q->queue_lock);

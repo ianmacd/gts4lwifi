@@ -76,7 +76,7 @@ int usb_gadget_map_request(struct usb_gadget *gadget,
 		}
 
 		req->num_mapped_sgs = mapped;
-	} else {
+	} else if (!req->dma_pre_mapped) {
 		req->dma = dma_map_single(dev, req->buf, req->length,
 				is_in ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
 
@@ -101,9 +101,15 @@ void usb_gadget_unmap_request(struct usb_gadget *gadget,
 				is_in ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
 
 		req->num_mapped_sgs = 0;
-	} else {
+	} else if (!req->dma_pre_mapped && req->dma != DMA_ERROR_CODE) {
+		/*
+		 * If the DMA address has not been mapped by a higher layer,
+		 * then unmap it here. Otherwise, the DMA address will be
+		 * unmapped by the upper layer (where the request was queued).
+		 */
 		dma_unmap_single(gadget->dev.parent, req->dma, req->length,
 				is_in ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+		req->dma = DMA_ERROR_CODE;
 	}
 }
 EXPORT_SYMBOL_GPL(usb_gadget_unmap_request);
@@ -499,11 +505,14 @@ static int udc_bind_to_driver(struct usb_udc *udc, struct usb_gadget_driver *dri
 	udc->gadget->dev.driver = &driver->driver;
 
 	ret = driver->bind(udc->gadget, driver);
-	if (ret)
+	if (ret) {
+		pr_err("usb: %s - failed to bind driver\n", __func__);
 		goto err1;
+	}
 	ret = usb_gadget_udc_start(udc);
 	if (ret) {
 		driver->unbind(udc->gadget);
+		pr_err("usb: %s - failed to udc start\n", __func__);
 		goto err1;
 	}
 	usb_udc_connect_control(udc);
@@ -533,10 +542,12 @@ int usb_udc_attach_driver(const char *name, struct usb_gadget_driver *driver)
 	}
 	if (ret) {
 		ret = -ENODEV;
+		pr_err("usb: %s - failed to get udc name\n", __func__);
 		goto out;
 	}
 	if (udc->driver) {
 		ret = -EBUSY;
+		pr_err("usb: %s - failed to get udc driver\n", __func__);
 		goto out;
 	}
 	ret = udc_bind_to_driver(udc, driver);

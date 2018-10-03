@@ -13,6 +13,8 @@ config ARM64
 	select ARCH_WANT_OPTIONAL_GPIOLIB
 	select ARCH_WANT_COMPAT_IPC_PARSE_VERSION
 	select ARCH_WANT_FRAME_POINTERS
+	select ARCH_HAVE_CUSTOM_GPIO_H
+	select ARCH_HAS_UBSAN_SANITIZE_ALL
 	select ARM_AMBA
 	select ARM_ARCH_TIMER
 	select ARM_GIC
@@ -23,12 +25,13 @@ config ARM64
 	select ARM_PSCI_FW
 	select BUILDTIME_EXTABLE_SORT
 	select CLONE_BACKWARDS
-	select COMMON_CLK
+	select COMMON_CLK if !ARCH_QCOM
 	select CPU_PM if (SUSPEND || CPU_IDLE)
 	select DCACHE_WORD_ACCESS
 	select EDAC_SUPPORT
 	select FRAME_POINTER
 	select GENERIC_ALLOCATOR
+	select EDAC_SUPPORT
 	select GENERIC_CLOCKEVENTS
 	select GENERIC_CLOCKEVENTS_BROADCAST
 	select GENERIC_CPU_AUTOPROBE
@@ -48,9 +51,13 @@ config ARM64
 	select HAVE_ALIGNED_STRUCT_PAGE if SLUB
 	select HAVE_ARCH_AUDITSYSCALL
 	select HAVE_ARCH_BITREVERSE
+	select HAVE_ARCH_HARDENED_USERCOPY
+	select HAVE_ARCH_HUGE_VMAP
 	select HAVE_ARCH_JUMP_LABEL
 	select HAVE_ARCH_KASAN if SPARSEMEM_VMEMMAP && !(ARM64_16K_PAGES && ARM64_VA_BITS_48)
 	select HAVE_ARCH_KGDB
+	select HAVE_ARCH_MMAP_RND_BITS
+	select HAVE_ARCH_MMAP_RND_COMPAT_BITS if COMPAT
 	select HAVE_ARCH_SECCOMP_FILTER
 	select HAVE_ARCH_TRACEHOOK
 	select HAVE_BPF_JIT
@@ -69,15 +76,18 @@ config ARM64
 	select HAVE_FUNCTION_TRACER
 	select HAVE_FUNCTION_GRAPH_TRACER
 	select HAVE_GENERIC_DMA_COHERENT
-	select HAVE_HW_BREAKPOINT if PERF_EVENTS
+	select HAVE_IRQ_TIME_ACCOUNTING
 	select HAVE_MEMBLOCK
 	select HAVE_PATA_PLATFORM
 	select HAVE_PERF_EVENTS
 	select HAVE_PERF_REGS
 	select HAVE_PERF_USER_STACK_DUMP
+	select HAVE_REGS_AND_STACK_ACCESS_API
 	select HAVE_RCU_TABLE_FREE
 	select HAVE_SYSCALL_TRACEPOINTS
-	select IOMMU_DMA if IOMMU_SUPPORT
+	select IOMMU_DMA if (IOMMU_SUPPORT && !ARCH_QCOM)
+	select HAVE_KPROBES
+	select HAVE_KRETPROBES if HAVE_KPROBES
 	select IRQ_DOMAIN
 	select IRQ_FORCED_THREADING
 	select MODULES_USE_ELF_RELA
@@ -92,6 +102,7 @@ config ARM64
 	select SPARSE_IRQ
 	select SYSCTL_EXCEPTION_TRACE
 	select HAVE_CONTEXT_TRACKING
+	select HAVE_ARM_SMCCC
 	help
 	  ARM 64-bit (AArch64) Linux support.
 
@@ -104,8 +115,39 @@ config ARCH_PHYS_ADDR_T_64BIT
 config MMU
 	def_bool y
 
+config ARCH_MMAP_RND_BITS_MIN
+       default 14 if ARM64_64K_PAGES
+       default 16 if ARM64_16K_PAGES
+       default 18
+
+# max bits determined by the following formula:
+#  VA_BITS - PAGE_SHIFT - 3
+config ARCH_MMAP_RND_BITS_MAX
+       default 19 if ARM64_VA_BITS=36
+       default 24 if ARM64_VA_BITS=39
+       default 27 if ARM64_VA_BITS=42
+       default 30 if ARM64_VA_BITS=47
+       default 29 if ARM64_VA_BITS=48 && ARM64_64K_PAGES
+       default 31 if ARM64_VA_BITS=48 && ARM64_16K_PAGES
+       default 33 if ARM64_VA_BITS=48
+       default 14 if ARM64_64K_PAGES
+       default 16 if ARM64_16K_PAGES
+       default 18
+
+config ARCH_MMAP_RND_COMPAT_BITS_MIN
+       default 7 if ARM64_64K_PAGES
+       default 9 if ARM64_16K_PAGES
+       default 11
+
+config ARCH_MMAP_RND_COMPAT_BITS_MAX
+       default 16
+
 config NO_IOPORT_MAP
 	def_bool y if !PCI
+
+config ILLEGAL_POINTER_VALUE
+	hex
+	default 0xdead000000000000
 
 config STACKTRACE_SUPPORT
 	def_bool y
@@ -157,6 +199,32 @@ config NEED_SG_DMA_LENGTH
 
 config SMP
 	def_bool y
+
+config ARM64_DMA_USE_IOMMU
+	bool
+	select ARM_HAS_SG_CHAIN
+	select NEED_SG_DMA_LENGTH
+
+if ARM64_DMA_USE_IOMMU
+
+config ARM64_DMA_IOMMU_ALIGNMENT
+	int "Maximum PAGE_SIZE order of alignment for DMA IOMMU buffers"
+	range 4 9
+	default 9
+	help
+	  DMA mapping framework by default aligns all buffers to the smallest
+	  PAGE_SIZE order which is greater than or equal to the requested buffer
+	  size. This works well for buffers up to a few hundreds kilobytes, but
+	  for larger buffers it just a waste of address space. Drivers which has
+	  relatively small addressing window (like 64Mib) might run out of
+	  virtual space with just a few allocations.
+
+	  With this parameter you can specify the maximum PAGE_SIZE order for
+	  DMA IOMMU buffers. Larger buffers will be aligned only to this
+	  specified order. The order is expressed as a power of two multiplied
+	  by the PAGE_SIZE.
+
+endif
 
 config SWIOTLB
 	def_bool y
@@ -362,6 +430,7 @@ config ARM64_ERRATUM_843419
 	bool "Cortex-A53: 843419: A load or store might access an incorrect address"
 	depends on MODULES
 	default y
+	select ARM64_MODULE_CMODEL_LARGE
 	help
 	  This option builds kernel modules using the large memory model in
 	  order to avoid the use of the ADRP instruction, which can cause
@@ -423,6 +492,11 @@ config CAVIUM_ERRATUM_27456
 
 endmenu
 
+config QCOM_TLB_EL2_HANDLER
+	bool "Raise TLB conflict exception to EL2"
+	help
+	  This option enables TLB conflict to be handled
+	  by EL2.
 
 choice
 	prompt "Page size"
@@ -442,6 +516,25 @@ config ARM64_16K_PAGES
 	  requires applications compiled with 16K (or a multiple of 16K)
 	  aligned segments.
 
+config ARM64_DCACHE_DISABLE
+	bool "Disable CPU Data Caches"
+	help
+	  Disable CPU data cache usage by setting the SCTLR[C] bit during
+	  kernel initialization. This will result in a considerable
+	  performance impact, but may be useful in certain situations.
+
+	  If you are not sure what to do, select 'N' here.
+
+config ARM64_ICACHE_DISABLE
+	bool "Disable CPU Instruction Caches"
+	help
+	  Disable CPU instruction cache usage by setting the SCTLR[I]
+	  bit during kernel initialization. This will result in a
+	  considerable performance impact, but may be useful in certain
+	  situations.
+
+	  If you are not sure what to do, select 'N' here.
+
 config ARM64_64K_PAGES
 	bool "64KB"
 	help
@@ -451,6 +544,37 @@ config ARM64_64K_PAGES
 	  with 64K aligned segments.
 
 endchoice
+
+config MSM_APP_API
+	bool "API support to enable / disable app settings for MSM8996"
+	depends on ARCH_MSM8996 && (ENABLE_FP_SIMD_SETTINGS || MSM_APP_SETTINGS)
+	help
+	  Add API support to enable / disable the app settings to be used
+	  at runtime. These APIs are used to enable / disable app setting
+	  when specific aarch32 or aarch64 processes are running.
+
+	  If you are not sure what to do, select 'N' here.
+
+config ENABLE_FP_SIMD_SETTINGS
+	bool "Enable FP(Floating Point) Settings for Qualcomm MSM8996"
+	depends on ARCH_MSM8996
+	select MSM_APP_API
+	help
+	  Enable FP(Floating Point) and SIMD settings for the MSM8996 during
+	  the execution of the aarch32 processes and disable these settings
+	  when you switch to the aarch64 processes.
+
+	  If you are not sure what to do, select 'N' here.
+
+config MSM_APP_SETTINGS
+	bool "Support to enable / disable app settings for MSM8996"
+	depends on ARCH_MSM8996
+	select MSM_APP_API
+	help
+	  Expose an interface used by the userspace at runtime to
+	  enable / disable the app specific settings.
+
+	  If you are not sure what to do, select 'N' here.
 
 choice
 	prompt "Virtual address space size"
@@ -523,8 +647,89 @@ config HOTPLUG_CPU
 	  Say Y here to experiment with turning CPUs off and on.  CPUs
 	  can be controlled through /sys/devices/system/cpu.
 
+# The GPIO number here must be sorted by descending number. In case of
+# a multiplatform kernel, we just want the highest value required by the
+# selected platforms.
+config ARCH_NR_GPIO
+        int
+        default 1024 if ARCH_TEGRA
+        default 1024 if ARCH_QCOM
+        default 256
+        help
+          Maximum number of GPIOs in the system.
+
+          If unsure, leave the default value.
+
+config QCOM_TLB_EL2_HANDLER
+	bool "Raise TLB conflict exception to EL2"
+	help
+	  This option enables TLB conflict to be handled
+	  by EL2.
+
+#
+# BEGIN RKP_CFP CONFIG OPTIONS
+#
+
+menu "Control Flow Protection"
+
+config RKP_CFP
+	bool "JOPP and ROPP"
+	default n
+
+config RKP_CFP_TEST
+	bool "test file, only include in ENG build"
+	depends on RKP_CFP
+	default n
+
+config RKP_CFP_JOPP
+	bool "JOP Prevention"
+	select RKP_CFP
+	depends on TIMA_RKP
+	default n
+
+config RKP_CFP_JOPP_MAGIC
+	hex 
+	depends on RKP_CFP && RKP_CFP_JOPP
+	default "0x00be7bad"
+
+config RKP_CFP_ROPP
+	bool "ROP Prevention"
+	select RKP_CFP
+	depends on TIMA_RKP
+	default n
+
+choice
+	prompt "ROPP key"
+	default RKP_CFP_ROPP_RANDKEY
+	depends on RKP_CFP && RKP_CFP_ROPP
+
+config RKP_CFP_ROPP_HYPKEY
+	bool "Use hypervisor"
+
+config RKP_CFP_ROPP_SYSREGKEY
+	bool "Use system register"
+
+config RKP_CFP_ROPP_RANDKEY
+	bool "random key"
+
+config RKP_CFP_ROPP_FIXKEY
+	bool "fixed key"
+
+config RKP_CFP_ROPP_ZEROKEY
+	bool "zero key"
+
+endchoice
+endmenu
+
+#
+# END RKP_CFP CONFIG OPTIONS
+#
+
 source kernel/Kconfig.preempt
 source kernel/Kconfig.hz
+
+config ARCH_SUPPORTS_DEBUG_PAGEALLOC
+	def_bool y
 
 config ARCH_HAS_HOLES_MEMORYMODEL
 	def_bool y if SPARSEMEM
@@ -546,10 +751,34 @@ config HW_PERF_EVENTS
 	def_bool y
 	depends on ARM_PMU
 
-config SYS_SUPPORTS_HUGETLBFS
-	def_bool y
+config ARM64_REG_REBALANCE_ON_CTX_SW
+	bool "Rebalance registers during context switches."
+	def_bool ARCH_MSM8996
+	help
+	 Forcefully re-balance register rename pools on context switches for
+	 improved performance on some devices.
 
-config ARCH_WANT_GENERAL_HUGETLB
+config PERF_EVENTS_USERMODE
+	bool "Enable usermode access for perf events"
+	depends on PERF_EVENTS
+	help
+	  Enable user-mode access to performance counters for perf events.
+	  If enabled, the access permissions allowing CPU performance
+	  counters to be accessed from user-mode are set.
+
+	  If you want user-mode programs to access perf events, say Y
+
+config PERF_EVENTS_RESET_PMU_DEBUGFS
+	bool "Reset PMU via debugfs node"
+	depends on PERF_EVENTS
+	help
+		Enable the debugfs node that can be used to reset PMUs and all
+		state variables associated with PMUs. If enabled, PMU and internal
+		state variable are cleared.
+		If you want to reset PMU and PMU related internal Perf variables
+		via debugfs then say Y.
+
+config SYS_SUPPORTS_HUGETLBFS
 	def_bool y
 
 config ARCH_WANT_HUGE_PMD_SHARE
@@ -609,6 +838,23 @@ config FORCE_MAX_ZONEORDER
 
 	  However for 4K, we choose a higher default value, 11 as opposed to 10, giving us
 	  4M allocations matching the default size used by generic code.
+
+config HARDEN_BRANCH_PREDICTOR
+	bool "Harden the branch predictor against aliasing attacks" if EXPERT
+	default y
+	help
+	  Speculation attacks against some high-performance processors rely on
+	  being able to manipulate the branch predictor for a victim context by
+	  executing aliasing branches in the attacker context.  Such attacks
+	  can be partially mitigated against by clearing internal branch
+	  predictor state and limiting the prediction logic in some situations.
+
+	  This config option will take CPU-specific actions to harden the
+	  branch predictor against aliasing attacks and may rely on specific
+	  instruction sequences or control bits being set by the system
+	  firmware.
+
+	  If unsure, say Y.
 
 menuconfig ARMV8_DEPRECATED
 	bool "Emulate deprecated/obsolete ARMv8 instructions"
@@ -677,11 +923,18 @@ config SETEND_EMULATION
 	  If unsure, say Y
 endif
 
+config ARM64_SW_TTBR0_PAN
+	bool "Emulate Privileged Access Never using TTBR0_EL1 switching"
+	help
+	  Enabling this option prevents the kernel from accessing
+	  user-space memory directly by pointing TTBR0_EL1 to a reserved
+	  zeroed area and reserved ASID. The user access routines
+	  restore the valid TTBR0_EL1 temporarily.
+
 menu "ARMv8.1 architectural features"
 
 config ARM64_HW_AFDBM
 	bool "Support for hardware updates of the Access and Dirty page flags"
-	default y
 	help
 	  The ARMv8.1 architecture extensions introduce support for
 	  hardware updates of the access and dirty information in page
@@ -698,7 +951,6 @@ config ARM64_HW_AFDBM
 
 config ARM64_PAN
 	bool "Enable support for Privileged Access Never (PAN)"
-	default y
 	help
 	 Privileged Access Never (PAN; part of the ARMv8.1 Extensions)
 	 prevents the kernel or hypervisor from accessing user-space (EL0)
@@ -724,9 +976,91 @@ config ARM64_LSE_ATOMICS
 
 endmenu
 
+config ARM64_UAO
+	bool "Enable support for User Access Override (UAO)"
+	help
+	  User Access Override (UAO; part of the ARMv8.2 Extensions)
+	  causes the 'unprivileged' variant of the load/store instructions to
+	  be overriden to be privileged.
+
+	  This option changes get_user() and friends to use the 'unprivileged'
+	  variant of the load/store instructions. This ensures that user-space
+	  really did have access to the supplied memory. When addr_limit is
+	  set to kernel memory the UAO bit will be set, allowing privileged
+	  access to kernel memory.
+
+	  Choosing this option will cause copy_to_user() et al to use user-space
+	  memory permissions.
+
+	  The feature is detected at runtime, the kernel will use the
+	  regular load/store instructions if the cpu does not implement the
+	  feature.
+
+config ARM64_MODULE_CMODEL_LARGE
+	bool
+
+config ARM64_MODULE_PLTS
+	bool
+	select ARM64_MODULE_CMODEL_LARGE
+	select HAVE_MOD_ARCH_SPECIFIC
+
+config RELOCATABLE
+	bool
+	help
+	  This builds the kernel as a Position Independent Executable (PIE),
+	  which retains all relocation metadata required to relocate the
+	  kernel binary at runtime to a different virtual address than the
+	  address it was linked at.
+	  Since AArch64 uses the RELA relocation format, this requires a
+	  relocation pass at runtime even if the kernel is loaded at the
+	  same address it was linked at.
+
+config RANDOMIZE_BASE
+	bool "Randomize the address of the kernel image"
+	select ARM64_MODULE_PLTS if MODULES
+	select RELOCATABLE
+	help
+	  Randomizes the virtual address at which the kernel image is
+	  loaded, as a security feature that deters exploit attempts
+	  relying on knowledge of the location of kernel internals.
+
+	  It is the bootloader's job to provide entropy, by passing a
+	  random u64 value in /chosen/kaslr-seed at kernel entry.
+
+	  When booting via the UEFI stub, it will invoke the firmware's
+	  EFI_RNG_PROTOCOL implementation (if available) to supply entropy
+	  to the kernel proper. In addition, it will randomise the physical
+	  location of the kernel Image as well.
+
+	  If unsure, say N.
+
+config RANDOMIZE_MODULE_REGION_FULL
+	bool "Randomize the module region independently from the core kernel"
+	depends on RANDOMIZE_BASE && !DYNAMIC_FTRACE
+	default y
+	help
+	  Randomizes the location of the module region without considering the
+	  location of the core kernel. This way, it is impossible for modules
+	  to leak information about the location of core kernel data structures
+	  but it does imply that function calls between modules and the core
+	  kernel will need to be resolved via veneers in the module PLT.
+
+	  When this option is not set, the module region will be randomized over
+	  a limited range that contains the [_stext, _etext] interval of the
+	  core kernel, so branch relocations are always in range.
+
 endmenu
 
 menu "Boot options"
+
+config ARM64_ACPI_PARKING_PROTOCOL
+	bool "Enable support for the ARM64 ACPI parking protocol"
+	depends on ACPI
+	help
+	  Enable support for the ARM64 ACPI parking protocol. If disabled
+	  the kernel will not allow booting through the ARM64 ACPI parking
+	  protocol even if the corresponding data is present in the ACPI
+	  MADT table.
 
 config CMDLINE
 	string "Default kernel command string"
@@ -736,6 +1070,23 @@ config CMDLINE
 	  entering them here. As a minimum, you should specify the the
 	  root device (e.g. root=/dev/nfs).
 
+choice
+	prompt "Kernel command line type" if CMDLINE != ""
+	default CMDLINE_FROM_BOOTLOADER
+
+config CMDLINE_FROM_BOOTLOADER
+	bool "Use bootloader kernel arguments if available"
+	help
+	  Uses the command-line options passed by the boot loader. If
+	  the boot loader doesn't provide any, the default kernel command
+	  string provided in CMDLINE will be used.
+
+config CMDLINE_EXTEND
+	bool "Extend bootloader kernel arguments"
+	help
+	  The command-line arguments provided by the boot loader will be
+	  appended to the default kernel command string.
+
 config CMDLINE_FORCE
 	bool "Always use the default kernel command string"
 	help
@@ -743,6 +1094,7 @@ config CMDLINE_FORCE
 	  loader passes other arguments to the kernel.
 	  This is useful if you cannot or don't want to change the
 	  command-line options your boot loader passes to the kernel.
+endchoice
 
 config EFI_STUB
 	bool
@@ -775,6 +1127,46 @@ config DMI
 	  However, even with this option, the resultant kernel should
 	  continue to boot on existing non-UEFI platforms.
 
+config BUILD_ARM64_APPENDED_DTB_IMAGE
+	bool "Build a concatenated Image.gz/dtb by default"
+	depends on OF
+	help
+	  Enabling this option will cause a concatenated Image.gz and list of
+	  DTBs to be built by default (instead of a standalone Image.gz.)
+	  The image will built in arch/arm64/boot/Image.gz-dtb
+
+choice
+	prompt "Appended DTB Kernel Image name"
+	depends on BUILD_ARM64_APPENDED_DTB_IMAGE
+	help
+	  Enabling this option will cause a specific kernel image Image or
+	  Image.gz to be used for final image creation.
+	  The image will built in arch/arm64/boot/IMAGE-NAME-dtb
+
+	config IMG_GZ_DTB
+		bool "Image.gz-dtb"
+	config IMG_DTB
+		bool "Image-dtb"
+endchoice
+
+config BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME
+	string
+	depends on BUILD_ARM64_APPENDED_DTB_IMAGE
+	default "Image.gz-dtb" if IMG_GZ_DTB
+	default "Image-dtb" if IMG_DTB
+
+config BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES
+	string "Default dtb names"
+	depends on BUILD_ARM64_APPENDED_DTB_IMAGE
+	help
+	  Space separated list of names of dtbs to append when
+	  building a concatenated Image.gz-dtb.
+
+config BUILD_ARM64_DT_OVERLAY
+	bool "enable DT overlay compilation support"
+	depends on OF
+	help
+	  This option enables support for DT overlay compilation.
 endmenu
 
 menu "Userspace binary formats"
@@ -806,14 +1198,553 @@ config SYSVIPC_COMPAT
 
 endmenu
 
+config SEC_FACTORY
+	bool "when it comes to sec factory mode"
+	default n
+	select SEC_NAD
+	select SEC_PANIC_PCIE_ERR
+	select BCM_DETECT_CONSECUTIVE_HANG
+	help
+		It will support a sec factory mode
+
+config SEC_DREAMQLTE_PROJECT
+	depends on ARCH_MSM8998
+		default n
+		bool "Samsung DREAMQLTE Project"
+		help
+		  Support for Samsung DREAMQLTE Project
+
+config MACH_DREAMQLTE_SINGLE
+	depends on SEC_DREAMQLTE_PROJECT
+		default n
+		bool "Samsung DREAMQLTE USA SQ"
+		help
+		  Support for Samsung DREAMQLTE USA SQ device.
+
+config MACH_DREAMQLTE_VZW
+	depends on SEC_DREAMQLTE_PROJECT
+		default n
+		bool "Samsung DREAMQLTE USA VZW"
+		help
+		  Support for Samsung DREAMQLTE USA VZW device.
+
+config MACH_DREAMQLTE_CHNZC
+	depends on SEC_DREAMQLTE_PROJECT
+		default n
+		bool "Samsung DREAMQLTE CHN OPEN"
+		help
+		  Support for Samsung DREAMQLTE CHN OPEN device.
+
+config MACH_DREAMQLTE_CHNHK
+	depends on SEC_DREAMQLTE_PROJECT
+		default n
+		bool "Samsung DREAMQLTE CHN HONGKONG"
+		help
+		  Support for Samsung DREAMQLTE CHN HONGKONG device.
+
+config MACH_DREAMQLTE_CHNZM
+	depends on SEC_DREAMQLTE_PROJECT
+		default n
+		bool "Samsung DREAMQLTE CHN CMCC"
+		help
+		  Support for Samsung DREAMQLTE CHN CMCC device.
+
+config MACH_DREAMQLTE_CAN_OPEN
+	depends on SEC_DREAMQLTE_PROJECT
+		default n
+		bool "Samsung DREAMQLTE CAN OPEN"
+		help
+		  Support for Samsung DREAMQLTE CAN OPEN device.
+
+config MACH_DREAMQLTE_KDI
+	depends on SEC_DREAMQLTE_PROJECT
+		default n
+		bool "Samsung DREAMQLTE JPN KDI"
+		help
+		  Support for Samsung DREAMQLTE JPN KDI device.
+
+config MACH_DREAMQLTE_DCM
+	depends on SEC_DREAMQLTE_PROJECT
+		default n
+		bool "Samsung DREAMQLTE JPN DCM"
+		help
+		  Support for Samsung DREAMQLTE JPN DCM device.
+
+config MACH_DREAMQLTE_USA_LDU
+	depends on SEC_DREAMQLTE_PROJECT
+		default n
+		bool "Samsung DREAMQLTE USA LDU"
+		help
+		  Support for Samsung DREAMQLTE USA LDU device.
+
+config MACH_DREAMQLTE_USA_OPEN
+        depends on SEC_DREAMQLTE_PROJECT
+                default n
+                bool "Samsung DREAMQLTE USA OPEN"
+                help
+                  Support for Samsung DREAMQLTE USA OPEN device.
+
+config MACH_DREAMQLTE_CHN_LDU
+        depends on SEC_DREAMQLTE_PROJECT
+                default n
+                bool "Samsung DREAMQLTE CHN LDU"
+                help
+                  Support for Samsung DREAMQLTE CHN LDU device.
+
+config SEC_DREAM2QLTE_PROJECT
+	depends on ARCH_MSM8998
+		default n
+		bool "Samsung DREAM2QLTE Project"
+		help
+		  Support for Samsung DREAM2QLTE Project
+
+config MACH_DREAM2QLTE_SINGLE
+	depends on SEC_DREAM2QLTE_PROJECT
+		default n
+		bool "Samsung DREAM2QLTE USA SQ"
+		help
+		  Support for Samsung DREAM2QLTE USA SQ device.
+
+config MACH_DREAM2QLTE_VZW
+	depends on SEC_DREAM2QLTE_PROJECT
+		default n
+		bool "Samsung DREAM2QLTE USA VZW"
+		help
+		  Support for Samsung DREAM2QLTE USA VZW device.
+
+config MACH_DREAM2QLTE_CHNZC
+	depends on SEC_DREAM2QLTE_PROJECT
+		default n
+		bool "Samsung DREAM2QLTE CHN OPEN"
+		help
+		  Support for Samsung DREAM2QLTE CHN OPEN device.
+
+config MACH_DREAM2QLTE_CHNHK
+	depends on SEC_DREAM2QLTE_PROJECT
+		default n
+		bool "Samsung DREAM2QLTE CHN HONGKONG"
+		help
+		  Support for Samsung DREAM2QLTE CHN HONGKONG device.
+
+config MACH_DREAM2QLTE_CAN_OPEN
+	depends on SEC_DREAM2QLTE_PROJECT
+		default n
+		bool "Samsung DREAM2QLTE CAN OPEN"
+		help
+		  Support for Samsung DREAM2QLTE CAN OPEN device.
+
+config MACH_DREAM2QLTE_DCM
+	depends on SEC_DREAM2QLTE_PROJECT
+		default n
+		bool "Samsung DREAM2QLTE JPN DCM"
+		help
+		  Support for Samsung DREAM2QLTE JPN DCM device.
+
+config MACH_DREAM2QLTE_KDI
+	depends on SEC_DREAM2QLTE_PROJECT
+		default n
+		bool "Samsung DREAM2QLTE JPN KDI"
+		help
+		  Support for Samsung DREAM2QLTE JPN KDI device.
+
+config MACH_DREAM2QLTE_LDU
+	depends on SEC_DREAM2QLTE_PROJECT
+		default n
+		bool "Samsung DREAM2QLTE USA LDU"
+		help
+		  Support for Samsung DREAM2QLTE USA LDU device.
+
+config MACH_DREAM2QLTE_USA_OPEN
+        depends on SEC_DREAM2QLTE_PROJECT
+                default n
+                bool "Samsung DREAM2QLTE USA OPEN"
+                help
+                  Support for Samsung DREAM2QLTE USA OPEN device.
+
+config MACH_DREAM2QLTE_CHN_LDU
+        depends on SEC_DREAM2QLTE_PROJECT
+                default n
+                bool "Samsung DREAM2QLTE CHN LDU"
+                help
+                  Support for Samsung DREAM2QLTE CHN LDU device.
+
+config SEC_GREATQLTE_PROJECT
+        depends on ARCH_MSM8998
+                default n
+                bool "Samsung GREATQLTE Project"
+                help
+                  Support for Samsung GREATQLTE Project
+
+config MACH_GREATQLTE_SINGLE
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung GREATQLTE USA SQ"
+                help
+                  Support for Samsung GREATQLTE USA SQ device.
+
+config MACH_GREATQLTE_CHNZC
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung GREATQLTE CHN OPEN"
+                help
+                  Support for Samsung GREATQLTE CHN OPEN device.
+
+config MACH_GREATQLTE_CHNHK
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung GREATQLTE CHN HK"
+                help
+                  Support for Samsung GREATQLTE CHN HK device.
+
+config MACH_GREATQLTE_CHN_LDU
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung GREATQLTE CHN LDU"
+                help
+                  Support for Samsung GREATQLTE CHN LDU device.
+
+config MACH_GREATQLTE_CHNZM
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung GREATQLTE CHN CMCC"
+                help
+                  Support for Samsung GREATQLTE CHN CMCC device.
+
+config MACH_GREATQLTE_CAN_SINGLE
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung GREATQLTE CAN SQ"
+                help
+                  Support for Samsung GREATQLTE CAN SQ device.
+
+config MACH_GREATQLTE_KDI
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung GREATQLTE JPN KDI"
+                help
+                  Support for Samsung GREATQLTE JPN KDI device.
+
+config MACH_GREATQLTE_DCM
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung GREATQLTE JPN DCM"
+                help
+                  Support for Samsung GREATQLTE JPN DCM device.
+
+config MACH_GREATQLTE_LDU
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung GREATQLTE USA LDU"
+                help
+                  Support for Samsung GREATQLTE USA LDU device.
+
+config MACH_GREATQLTE_OPEN
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung GREATQLTE USA OPEN"
+                help
+                  Support for Samsung GREATQLTE USA OPEN device.
+
+config MACH_DREAM2QGREATLTE_SINGLE
+        depends on SEC_GREATQLTE_PROJECT
+                default n
+                bool "Samsung DREAM2QGREATLTE USA SQ"
+                help
+		  Support for Samsung DREAM2QGREATLTE USA SQ device.
+
+config SEC_CRUISERLTE_PROJECT
+	depends on ARCH_MSM8998
+		default n
+		bool "Samsung CRUISERLTE Project"
+		help
+		  Support for Samsung CRUISERLTE Project
+
+config MACH_CRUISERLTE_SINGLE
+	depends on SEC_CRUISERLTE_PROJECT
+		default n
+		bool "Samsung CRUISERLTE USA SQ"
+		help
+		  Support for Samsung CRUISERLTE USA SQ device. 
+
+config MACH_CRUISERLTE_USA_ATT
+        depends on SEC_CRUISERLTE_PROJECT
+                default n
+                bool "Samsung CRUISERLTE USA ATT"
+                help
+                  Support for Samsung CRUISERLTE USA ATT device.
+
+config SEC_KELLYLTE_PROJECT
+	depends on ARCH_MSM8998
+		default n
+		bool "Samsung KELLYLTE Project"
+		help
+		  Support for Samsung KELLYLTE Project
+
+config MACH_KELLYLTE_CHN_OPEN
+	depends on SEC_KELLYLTE_PROJECT
+		default n
+		bool "Samsung KELLYLTE CHN OPEN"
+		help
+		  Support for Samsung KELLYLTE CHN OPEN device.
+
+config SEC_GTS4LLTE_PROJECT
+	depends on ARCH_MSM8998
+		default n
+		bool "Samsung GTS4LLTE Project"
+		help
+		  Support for Samsung GTS4LLTE Project
+
+config MACH_GTS4LLTE_USA
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE USA"
+                help
+                  Support for Samsung GTS4LLTE USA device.
+
+config MACH_GTS4LLTE_CHN
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE CHN"
+                help
+                  Support for Samsung GTS4LLTE CHN device.
+
+config MACH_GTS4LLTE_CHNHK
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE CHNHK"
+                help
+                  Support for Samsung GTS4LLTE CHNHK device.
+
+config MACH_GTS4LLTE_DX
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE SEA OPEN"
+                help
+                  Support for Samsung GTS4LLTE SEA OPEN device.
+
+config MACH_GTS4LLTE_KX
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE KOR OPEN"
+                help
+                  Support for Samsung GTS4LLTE KOR OPEN device.
+
+config MACH_GTS4LLTE_JX
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE MEA OPEN"
+                help
+                  Support for Samsung GTS4LLTE MEA OPEN device.
+
+config MACH_GTS4LLTE_SER
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE CIS SER"
+                help
+                  Support for Samsung GTS4LLTE CIS SER device.
+
+config MACH_GTS4LLTE_SPR
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE USA SPR"
+                help
+                  Support for Samsung GTS4LLTE USA SPR device.
+
+config MACH_GTS4LLTE_TUR
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE MEA TUR"
+                help
+                  Support for Samsung GTS4LLTE MEA TUR device.
+
+config MACH_GTS4LLTE_UB
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE LTN OPEN"
+                help
+                  Support for Samsung GTS4LLTE LTN OPEN device.
+
+config MACH_GTS4LLTE_UC
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE USA ATT"
+                help
+                  Support for Samsung GTS4LLTE USA ATT device.
+
+config MACH_GTS4LLTE_USC
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE USA USC"
+                help
+                  Support for Samsung GTS4LLTE USA USC device.
+
+config MACH_GTS4LLTE_VZW
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE USA VZW"
+                help
+                  Support for Samsung GTS4LLTE USA VZW device.
+
+config MACH_GTS4LLTE_XX
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE EUR OPEN"
+                help
+                  Support for Samsung GTS4LLTE EUR OPEN device.
+				  
+config MACH_GTS4LLTE_DD
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE SWA OPEN"
+                help
+                  Support for Samsung GTS4LLTE SWA OPEN device.
+
+config MACH_GTS4LLTE_XX_LDU
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE EUR LDU"
+                help
+                  Support for Samsung GTS4LLTE EUR LDU device.
+
+config SEC_GTS4LWIFI_PROJECT
+	depends on ARCH_MSM8998
+		default n
+		bool "Samsung GTS4LWIFI Project"
+		help
+		  Support for Samsung GTS4LWIFI Project
+
+config MACH_GTS4LWIFI_SER
+        depends on SEC_GTS4LWIFI_PROJECT
+                default n
+                bool "Samsung GTS4LWIFI CIS SER"
+                help
+                  Support for Samsung GTS4LWIFI CIS SER device.
+
+config MACH_GTS4LWIFI_ZC
+        depends on SEC_GTS4LWIFI_PROJECT
+                default n
+                bool "Samsung GTS4LWIFI CHN OPEN"
+                help
+                  Support for Samsung GTS4LWIFI CHN OPEN device.
+
+config MACH_GTS4LWIFI_XX
+        depends on SEC_GTS4LWIFI_PROJECT
+                default n
+                bool "Samsung GTS4LWIFI EUR OPEN"
+                help
+                  Support for Samsung GTS4LWIFI EUR OPEN device.
+
+config MACH_GTS4LWIFI_XX_LDU
+        depends on SEC_GTS4LWIFI_PROJECT
+                default n
+                bool "Samsung GTS4LWIFI EUR LDU"
+                help
+                  Support for Samsung GTS4LWIFI EUR LDU device.
+
+config DRV_SAMSUNG
+	bool "samsung device dedicated drivers option"
+	default y
+	help
+	  This is driver option for samsung sec_class
+	  Say y here to enable samsung classes for drivers
+	  Provide option of enabling sec class
+	  Supports sec drivers key, touch, sec_debug etc
+
+config RELOCATABLE_KERNEL 
+	bool "set kernel to relocatable in both virtual and physical address"
+	default n
+	depends on TIMA
+	help 	
+	  This configuare will allow you to config the kernel into position independent kernel, with '--PIE' insert into LD script.
+
+config LOD_SEC
+	bool "kernel security re-enforcement for Linux On Dex, including cap re-check and seccomp report"
+	default n
+
+config TIMA
+	bool "Enable TIMA(Trustzone based Integrity Measurement Archtecture feature"
+	default n
+
+config TIMA_RKP 
+	bool "Samsung KNOX realtime kernel protection"
+	default n
+	help 	
+	  this enables realtime kernel protection
+
+config RKP_KDP
+	bool "Protection for cred structure"
+	depends on TIMA_RKP
+	depends on !SEC_FACTORY
+	depends on SAMSUNG_PRODUCT_SHIP
+	default n
+	help
+	  Prevents unauthorized cred modification.
+
+config RKP_NS_PROT
+	bool "Protection for cred structure"
+	depends on RKP_KDP
+	depends on !SEC_FACTORY
+	depends on SAMSUNG_PRODUCT_SHIP
+	default n
+	help
+	  Prevents unauthorized cred modification.
+
+
+config RKP_DMAP_PROT
+        bool "Page Double Mapping protection"
+	depends on RKP_KDP
+	depends on !SEC_FACTORY
+	depends on SAMSUNG_PRODUCT_SHIP
+        default n
+        help
+          Prevents unauthorized mapping for page table.
+
+config RELOCATABLE_KERNEL 
+	bool "set kernel to relocatable in both virtual and physical address"
+	default n
+	help 	
+	  This configuare will allow you to config the kernel into position independent kernel, with '--PIE' insert into LD script.
+
+config USER_RESET_DEBUG
+	bool "reset reason debug feature in user version"
+	default n
+	help
+	  This option provides reset history log in user version.
+	  This option enable proc/reset_reason support
+
+config USER_RESET_DEBUG_TEST
+	bool "reset reason debug test feature in eng version"
+	depends on USER_RESET_DEBUG
+	default n
+	help
+	  This option enable for test in eng version(KP, DP, TP, WP)
+
+config SEC_BITSCATTER
+	bool "Enables bitScatter library"
+	default y
+	help
+	  This option enables sysfs interfaces for bitSscatter configuration.
+
 menu "Power management options"
 
 source "kernel/power/Kconfig"
+
+config ARCH_HIBERNATION_POSSIBLE
+	def_bool y
+	depends on CPU_PM
+
+config ARCH_HIBERNATION_HEADER
+	def_bool y
+	depends on HIBERNATION
 
 config ARCH_SUSPEND_POSSIBLE
 	def_bool y
 
 endmenu
+
+config SAMSUNG_PRODUCT_SHIP
+	bool "set up for product shipping"
+	default n
 
 menu "CPU Power Management"
 
@@ -822,6 +1753,25 @@ source "drivers/cpuidle/Kconfig"
 source "drivers/cpufreq/Kconfig"
 
 endmenu
+
+#
+# END RKP_CFP CONFIG OPTIONS
+#
+
+config DRV_SAMSUNG
+	bool "samsung device dedicated drivers option"
+	default y
+	help
+	  This is driver option for samsung sec_class
+	  Say y here to enable samsung classes for drivers
+	  Provide option of enabling sec class
+	  Supports sec drivers key, touch, sec_debug etc
+
+config SEC_PERIPHERAL_SECURE_CHK
+	bool "PERIPHERAL SECURE check"
+	default n
+	help
+	  To check the authentication of peripheral image.
 
 source "net/Kconfig"
 

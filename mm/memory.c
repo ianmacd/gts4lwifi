@@ -2618,7 +2618,8 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	}
 
 	swap_free(entry);
-	if (vm_swap_full() || (vma->vm_flags & VM_LOCKED) || PageMlocked(page))
+	if ((PageSwapCache(page) && vm_swap_full(page_swap_info(page))) ||
+		(vma->vm_flags & VM_LOCKED) || PageMlocked(page))
 		try_to_free_swap(page);
 	unlock_page(page);
 	if (page != swapcache) {
@@ -3290,12 +3291,12 @@ static int handle_pte_fault(struct mm_struct *mm,
 	barrier();
 	if (!pte_present(entry)) {
 		if (pte_none(entry)) {
-			if (vma_is_anonymous(vma))
-				return do_anonymous_page(mm, vma, address,
-							 pte, pmd, flags);
-			else
-				return do_fault(mm, vma, address, pte, pmd,
-						flags, entry);
+			if (vma->vm_ops)
+					return do_fault(mm, vma, address, pte, pmd,
+													flags, entry);
+
+			return do_anonymous_page(mm, vma, address, pte, pmd,
+					flags);
 		}
 		return do_swap_page(mm, vma, address,
 					pte, pmd, flags, entry);

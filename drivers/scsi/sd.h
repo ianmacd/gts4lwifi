@@ -19,13 +19,15 @@
  */
 #define SD_FLUSH_TIMEOUT_MULTIPLIER	2
 #define SD_WRITE_SAME_TIMEOUT	(120 * HZ)
+#define SD_UFS_TIMEOUT		(10 * HZ)
+#define SD_UFS_FLUSH_TIMEOUT	(6 * HZ)
 
 /*
  * Number of allowed retries
  */
 #define SD_MAX_RETRIES		5
 #define SD_PASSTHROUGH_RETRIES	1
-#define SD_MAX_MEDIUM_TIMEOUTS	2
+#define SD_MAX_MEDIUM_TIMEOUTS	4
 
 /*
  * Size of the initial data buffer for mode and read capacity data
@@ -94,6 +96,14 @@ struct scsi_disk {
 	unsigned	lbpvpd : 1;
 	unsigned	ws10 : 1;
 	unsigned	ws16 : 1;
+#ifdef CONFIG_USB_STORAGE_DETECT
+	wait_queue_head_t	 delay_wait;
+	struct completion	scanning_done;
+	struct task_struct *th;
+	int		thread_remove;
+	int		async_end;
+	int		prv_media_present;
+#endif
 };
 #define to_scsi_disk(obj) container_of(obj,struct scsi_disk,dev)
 
@@ -149,11 +159,6 @@ static inline int scsi_medium_access_command(struct scsi_cmnd *scmd)
 static inline sector_t logical_to_sectors(struct scsi_device *sdev, sector_t blocks)
 {
 	return blocks << (ilog2(sdev->sector_size) - 9);
-}
-
-static inline unsigned int logical_to_bytes(struct scsi_device *sdev, sector_t blocks)
-{
-	return blocks * sdev->sector_size;
 }
 
 /*

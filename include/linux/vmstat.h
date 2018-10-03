@@ -160,6 +160,26 @@ static inline unsigned long zone_page_state_snapshot(struct zone *zone,
 	return x;
 }
 
+static inline unsigned long global_page_state_snapshot(enum zone_stat_item item)
+{
+	long x = atomic_long_read(&vm_stat[item]);
+
+#ifdef CONFIG_SMP
+	struct zone *zone;
+	int cpu;
+
+	for_each_online_cpu(cpu) {
+		for_each_populated_zone(zone)
+			x += per_cpu_ptr(zone->pageset,
+				cpu)->vm_stat_diff[item];
+	}
+
+	if (x < 0)
+		x = 0;
+#endif
+	return x;
+}
+
 #ifdef CONFIG_NUMA
 
 extern unsigned long node_page_state(int node, enum zone_stat_item item);
@@ -189,6 +209,7 @@ extern void __inc_zone_state(struct zone *, enum zone_stat_item);
 extern void dec_zone_state(struct zone *, enum zone_stat_item);
 extern void __dec_zone_state(struct zone *, enum zone_stat_item);
 
+void quiet_vmstat(void);
 void cpu_vm_stats_fold(int cpu);
 void refresh_zone_stat_thresholds(void);
 
@@ -249,6 +270,7 @@ static inline void __dec_zone_page_state(struct page *page,
 
 static inline void refresh_zone_stat_thresholds(void) { }
 static inline void cpu_vm_stats_fold(int cpu) { }
+static inline void quiet_vmstat(void) { }
 
 static inline void drain_zonestat(struct zone *zone,
 			struct per_cpu_pageset *pset) { }

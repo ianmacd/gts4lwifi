@@ -29,8 +29,10 @@
 
 #include <linux/string.h>
 
+#include <asm/alternative.h>
 #include <asm/fpsimd.h>
 #include <asm/hw_breakpoint.h>
+#include <asm/lse.h>
 #include <asm/pgtable-hwdef.h>
 #include <asm/ptrace.h>
 #include <asm/types.h>
@@ -48,6 +50,9 @@
 extern phys_addr_t arm64_dma_phys_limit;
 #define ARCH_LOW_ADDRESS_LIMIT	(arm64_dma_phys_limit - 1)
 #endif /* __KERNEL__ */
+
+extern unsigned int boot_reason;
+extern unsigned int cold_boot;
 
 struct debug_info {
 	/* Have we suspended stepping by a debugger? */
@@ -177,9 +182,11 @@ static inline void prefetchw(const void *ptr)
 }
 
 #define ARCH_HAS_SPINLOCK_PREFETCH
-static inline void spin_lock_prefetch(const void *x)
+static inline void spin_lock_prefetch(const void *ptr)
 {
-	prefetchw(x);
+	asm volatile(ARM64_LSE_ATOMIC_INSN(
+		     "prfm pstl1strm, %a0",
+		     "nop") : : "p" (ptr));
 }
 
 #define HAVE_ARCH_PICK_MMAP_LAYOUT
@@ -187,5 +194,6 @@ static inline void spin_lock_prefetch(const void *x)
 #endif
 
 int cpu_enable_pan(void *__unused);
+int cpu_enable_uao(void *__unused);
 
 #endif /* __ASM_PROCESSOR_H */

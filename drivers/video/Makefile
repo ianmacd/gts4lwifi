@@ -1,6 +1,8 @@
+obj-$(CONFIG_MSM_BA_V4L2)         += msm/ba/
 obj-$(CONFIG_VGASTATE)            += vgastate.o
 obj-$(CONFIG_HDMI)                += hdmi.o
 
+obj-$(CONFIG_ADF)		  += adf/
 obj-$(CONFIG_VT)		  += console/
 obj-$(CONFIG_LOGO)		  += logo/
 obj-y				  += backlight/

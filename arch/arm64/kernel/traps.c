@@ -33,6 +33,7 @@
 #include <linux/syscalls.h>
 
 #include <asm/atomic.h>
+#include <asm/barrier.h>
 #include <asm/bug.h>
 #include <asm/debug-monitors.h>
 #include <asm/esr.h>
@@ -41,6 +42,20 @@
 #include <asm/stacktrace.h>
 #include <asm/exception.h>
 #include <asm/system_misc.h>
+#include <asm/esr.h>
+#include <asm/edac.h>
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/qcom/sec_debug.h>
+#endif
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
+#include <linux/qcom/sec_debug_summary.h>
+#endif
+
+#include <trace/events/exception.h>
+
+#ifdef CONFIG_RKP_CFP_ROPP
+#include <linux/rkp_cfp.h>
+#endif
 
 static const char *handler[]= {
 	"Synchronous Abort",
@@ -54,18 +69,16 @@ int show_unhandled_signals = 1;
 /*
  * Dump out the contents of some memory nicely...
  */
-static void dump_mem(const char *lvl, const char *str, unsigned long bottom,
-		     unsigned long top, bool compat)
+ static void dump_mem(const char *lvl, const char *str, unsigned long bottom,
+		     unsigned long top)
 {
 	unsigned long first;
 	mm_segment_t fs;
 	int i;
-	unsigned int width = compat ? 4 : 8;
 
 	/*
 	 * We need to switch to kernel mode so that we can use __get_user
-	 * to safely read from kernel space.  Note that we now dump the
-	 * code first, just in case the backtrace kills us.
+	 * to safely read from kernel space.
 	 */
 	fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -79,22 +92,13 @@ static void dump_mem(const char *lvl, const char *str, unsigned long bottom,
 		memset(str, ' ', sizeof(str));
 		str[sizeof(str) - 1] = '\0';
 
-		for (p = first, i = 0; i < (32 / width)
-					&& p < top; i++, p += width) {
+		for (p = first, i = 0; i < 8 && p < top; i++, p += 4) {
 			if (p >= bottom && p < top) {
-				unsigned long val;
-
-				if (width == 8) {
-					if (__get_user(val, (unsigned long *)p) == 0)
-						sprintf(str + i * 17, " %016lx", val);
-					else
-						sprintf(str + i * 17, " ????????????????");
-				} else {
-					if (__get_user(val, (unsigned int *)p) == 0)
-						sprintf(str + i * 9, " %08lx", val);
-					else
-						sprintf(str + i * 9, " ????????");
-				}
+				unsigned int val;
+				if (__get_user(val, (unsigned int *)p) == 0)
+					sprintf(str + i * 9, " %08x", val);
+				else
+					sprintf(str + i * 9, " ????????");
 			}
 		}
 		printk("%s%04lx:%s\n", lvl, first & 0xffff, str);
@@ -103,28 +107,58 @@ static void dump_mem(const char *lvl, const char *str, unsigned long bottom,
 	set_fs(fs);
 }
 
-static void dump_backtrace_entry(unsigned long where)
+static void dump_backtrace_entry(unsigned long where, unsigned long stack)
 {
-	/*
-	 * Note that 'where' can have a physical address, but it's not handled.
-	 */
 	print_ip_sym(where);
+	if (in_exception_text(where))
+		dump_mem("", "Exception stack", stack,
+			 stack + sizeof(struct pt_regs));
 }
 
-static void dump_instr(const char *lvl, struct pt_regs *regs)
+#ifdef CONFIG_USER_RESET_DEBUG
+void sec_debug_backtrace(void)
+{
+	static int once = 0;
+	struct stackframe frame;
+	int skip_callstack = 0;
+#ifdef CONFIG_RKP_CFP_ROPP
+	unsigned long where = 0x0;
+#endif
+
+	if (!once++) {
+		frame.fp = (unsigned long)__builtin_frame_address(0);
+		frame.sp = current_stack_pointer;
+		frame.pc = (unsigned long)sec_debug_backtrace;
+
+		while (1) {
+			int ret;
+
+			ret = unwind_frame(current, &frame);
+			if (ret < 0)
+				break;
+
+			if (skip_callstack++ > 3) {
+#ifdef CONFIG_RKP_CFP_ROPP
+				where = frame.pc;
+				if (where>>40 != 0xffffff){
+					where = ropp_enable_backtrace(where, current);
+				}
+				_sec_debug_store_backtrace(where);
+#else
+				_sec_debug_store_backtrace(frame.pc);
+#endif
+			}
+		}
+	}
+}
+EXPORT_SYMBOL(sec_debug_backtrace);
+#endif
+
+static void __dump_instr(const char *lvl, struct pt_regs *regs)
 {
 	unsigned long addr = instruction_pointer(regs);
-	mm_segment_t fs;
 	char str[sizeof("00000000 ") * 5 + 2 + 1], *p = str;
 	int i;
-
-	/*
-	 * We need to switch to kernel mode so that we can use __get_user
-	 * to safely read from kernel space.  Note that we now dump the
-	 * code first, just in case the backtrace kills us.
-	 */
-	fs = get_fs();
-	set_fs(KERNEL_DS);
 
 	for (i = -4; i < 1; i++) {
 		unsigned int val, bad;
@@ -139,24 +173,44 @@ static void dump_instr(const char *lvl, struct pt_regs *regs)
 		}
 	}
 	printk("%sCode: %s\n", lvl, str);
+}
 
-	set_fs(fs);
+static void dump_instr(const char *lvl, struct pt_regs *regs)
+{
+	if (!user_mode(regs)) {
+		mm_segment_t fs = get_fs();
+		set_fs(KERNEL_DS);
+		__dump_instr(lvl, regs);
+		set_fs(fs);
+	} else {
+		__dump_instr(lvl, regs);
+	}
 }
 
 static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 {
 	struct stackframe frame;
+	unsigned long irq_stack_ptr;
+	int skip;
+#ifdef CONFIG_RKP_CFP_ROPP
+	volatile unsigned long init_pc = 0x0;
+#endif
+
+	/*
+	 * Switching between stacks is valid when tracing current and in
+	 * non-preemptible context.
+	 */
+	if (tsk == current && !preemptible())
+		irq_stack_ptr = IRQ_STACK_PTR(smp_processor_id());
+	else
+		irq_stack_ptr = 0;
 
 	pr_debug("%s(regs = %p tsk = %p)\n", __func__, regs, tsk);
 
 	if (!tsk)
 		tsk = current;
 
-	if (regs) {
-		frame.fp = regs->regs[29];
-		frame.sp = regs->sp;
-		frame.pc = regs->pc;
-	} else if (tsk == current) {
+	if (tsk == current) {
 		frame.fp = (unsigned long)__builtin_frame_address(0);
 		frame.sp = current_stack_pointer;
 		frame.pc = (unsigned long)dump_backtrace;
@@ -168,21 +222,66 @@ static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 		frame.sp = thread_saved_sp(tsk);
 		frame.pc = thread_saved_pc(tsk);
 	}
+#ifdef CONFIG_FUNCTION_GRAPH_TRACER
+	frame.graph = tsk->curr_ret_stack;
+#endif
 
-	pr_emerg("Call trace:\n");
+	skip = !!regs;
+
+#ifdef CONFIG_RKP_CFP_ROPP
+#ifdef CONFIG_RKP_CFP_TEST
+	asm volatile( "mrs %0, "STR(RRMK)"\n\t" : "=r" (init_pc));
+	printk("CFP_TEST MK= %lx\n", init_pc);
+	printk("CFP_TEST RRK=%lx TK=%lx\n", task_thread_info(tsk)->rrk, task_thread_info(tsk)->rrk ^ init_pc);
+#endif
+	init_pc = frame.pc;
+#endif //CONFIG_RKP_CFP_ROPP
+	printk("Call trace:\n");
 	while (1) {
 		unsigned long where = frame.pc;
 		unsigned long stack;
 		int ret;
 
-		dump_backtrace_entry(where);
-		ret = unwind_frame(&frame);
+		/* skip until specified stack frame */
+		if (!skip) {
+			where = frame.pc;
+		} else if (frame.fp == regs->regs[29]) {
+			skip = 0;
+			/*
+			 * Mostly, this is the case where this function is
+			 * called in panic/abort. As exception handler's
+			 * stack frame does not contain the corresponding pc
+			 * at which an exception has taken place, use regs->pc
+			 * instead.
+			 */
+			where = regs->pc;
+		}
+
+		ret = unwind_frame(tsk, &frame);
 		if (ret < 0)
 			break;
+
 		stack = frame.sp;
-		if (in_exception_text(where))
+#ifdef CONFIG_RKP_CFP_ROPP
+		if (where != init_pc && (where>>40 != 0xffffff)){
+			where = ropp_enable_backtrace(where, tsk);
+		}
+#endif
+		if (in_exception_text(where)) {
+			/*
+			 * If we switched to the irq_stack before calling this
+			 * exception handler, then the pt_regs will be on the
+			 * task stack. The easiest way to tell is if the large
+			 * pt_regs would overlap with the end of the irq_stack.
+			 */
+			if (stack < irq_stack_ptr &&
+			    (stack + sizeof(struct pt_regs)) > irq_stack_ptr)
+				stack = IRQ_STACK_TO_TASK_STACK(irq_stack_ptr);
+
 			dump_mem("", "Exception stack", stack,
-				 stack + sizeof(struct pt_regs), false);
+				 stack + sizeof(struct pt_regs));
+		}
+		dump_backtrace_entry(where, stack);
 	}
 }
 
@@ -220,9 +319,17 @@ static int __die(const char *str, int err, struct thread_info *thread,
 		 TASK_COMM_LEN, tsk->comm, task_pid_nr(tsk), thread + 1);
 
 	if (!user_mode(regs) || in_interrupt()) {
-		dump_mem(KERN_EMERG, "Stack: ", regs->sp,
-			 THREAD_SIZE + (unsigned long)task_stack_page(tsk),
-			 compat_user_mode(regs));
+#ifdef CONFIG_SEC_DEBUG
+		if (THREAD_SIZE + (unsigned long)task_stack_page(tsk) - regs->sp
+			> THREAD_SIZE) {
+			dump_mem(KERN_EMERG, "Stack: ", regs->sp,
+					THREAD_SIZE/4 + regs->sp);
+		} else {
+			dump_mem(KERN_EMERG, "Stack: ", regs->sp,
+					THREAD_SIZE + (unsigned long)task_stack_page(tsk));
+		}
+#endif
+
 		dump_backtrace(regs, tsk);
 		dump_instr(KERN_EMERG, regs);
 	}
@@ -230,7 +337,58 @@ static int __die(const char *str, int err, struct thread_info *thread,
 	return ret;
 }
 
-static DEFINE_RAW_SPINLOCK(die_lock);
+static arch_spinlock_t die_lock = __ARCH_SPIN_LOCK_UNLOCKED;
+static int die_owner = -1;
+static unsigned int die_nest_count;
+
+static unsigned long oops_begin(void)
+{
+	int cpu;
+	unsigned long flags;
+
+	oops_enter();
+#ifdef CONFIG_SEC_DEBUG
+	secdbg_sched_msg("!!die!!");
+#endif
+
+	/* racy, but better than risking deadlock. */
+	raw_local_irq_save(flags);
+	cpu = smp_processor_id();
+	if (!arch_spin_trylock(&die_lock)) {
+		if (cpu == die_owner)
+			/* nested oops. should stop eventually */;
+		else
+			arch_spin_lock(&die_lock);
+	}
+	die_nest_count++;
+	die_owner = cpu;
+	console_verbose();
+	bust_spinlocks(1);
+	return flags;
+}
+
+static void oops_end(unsigned long flags, struct pt_regs *regs, int notify)
+{
+	if (regs && kexec_should_crash(current))
+		crash_kexec(regs);
+
+	bust_spinlocks(0);
+	die_owner = -1;
+	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
+	die_nest_count--;
+	if (!die_nest_count)
+		/* Nest count reaches zero, release the lock. */
+		arch_spin_unlock(&die_lock);
+	raw_local_irq_restore(flags);
+	oops_exit();
+
+	if (in_interrupt())
+		panic("Fatal exception in interrupt");
+	if (panic_on_oops)
+		panic("Fatal exception");
+	if (notify != NOTIFY_STOP)
+		do_exit(SIGSEGV);
+}
 
 /*
  * This function is protected against re-entrancy.
@@ -238,29 +396,22 @@ static DEFINE_RAW_SPINLOCK(die_lock);
 void die(const char *str, struct pt_regs *regs, int err)
 {
 	struct thread_info *thread = current_thread_info();
+	enum bug_trap_type bug_type = BUG_TRAP_TYPE_NONE;
+	unsigned long flags = oops_begin();
 	int ret;
 
-	oops_enter();
+	if (!user_mode(regs))
+		bug_type = report_bug(regs->pc, regs);
+	if (bug_type != BUG_TRAP_TYPE_NONE)
+		str = "Oops - BUG";
 
-	raw_spin_lock_irq(&die_lock);
-	console_verbose();
-	bust_spinlocks(1);
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
+	sec_debug_save_die_info(str, regs);
+#endif
+
 	ret = __die(str, err, thread, regs);
 
-	if (regs && kexec_should_crash(thread->task))
-		crash_kexec(regs);
-
-	bust_spinlocks(0);
-	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
-	raw_spin_unlock_irq(&die_lock);
-	oops_exit();
-
-	if (in_interrupt())
-		panic("Fatal exception in interrupt");
-	if (panic_on_oops)
-		panic("Fatal exception");
-	if (ret != NOTIFY_STOP)
-		do_exit(SIGSEGV);
+	oops_end(flags, regs, ret);
 }
 
 void arm64_notify_die(const char *str, struct pt_regs *regs,
@@ -350,6 +501,8 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 	if (call_undef_hook(regs) == 0)
 		return;
 
+	trace_undef_instr(regs, (void *)pc);
+
 	if (unhandled_signal(current, SIGILL) && show_unhandled_signals_ratelimited()) {
 		pr_info("%s[%d]: undefined instruction: pc=%p\n",
 			current->comm, task_pid_nr(current), pc);
@@ -362,6 +515,38 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 	info.si_addr  = pc;
 
 	arm64_notify_die("Oops - undefined instruction", regs, &info, 0);
+}
+
+static void cntvct_read_handler(unsigned int esr, struct pt_regs *regs)
+{
+	int rt = (esr & ESR_ELx_SYS64_ISS_RT_MASK) >> ESR_ELx_SYS64_ISS_RT_SHIFT;
+
+	isb();
+	if (rt != 31)
+		regs->regs[rt] = arch_counter_get_cntvct();
+	regs->pc += 4;
+}
+
+static void cntfrq_read_handler(unsigned int esr, struct pt_regs *regs)
+{
+	int rt = (esr & ESR_ELx_SYS64_ISS_RT_MASK) >> ESR_ELx_SYS64_ISS_RT_SHIFT;
+
+	if (rt != 31)
+		regs->regs[rt] = read_sysreg(cntfrq_el0);
+	regs->pc += 4;
+}
+
+asmlinkage void __exception do_sysinstr(unsigned int esr, struct pt_regs *regs)
+{
+	if ((esr & ESR_ELx_SYS64_ISS_SYS_OP_MASK) == ESR_ELx_SYS64_ISS_SYS_CNTVCT) {
+		cntvct_read_handler(esr, regs);
+		return;
+	} else if ((esr & ESR_ELx_SYS64_ISS_SYS_OP_MASK) == ESR_ELx_SYS64_ISS_SYS_CNTFRQ) {
+		cntfrq_read_handler(esr, regs);
+		return;
+	}
+
+	do_undefinstr(regs);
 }
 
 long compat_arm_syscall(struct pt_regs *regs);
@@ -430,7 +615,7 @@ static const char *esr_class_str[] = {
 
 const char *esr_get_class_string(u32 esr)
 {
-	return esr_class_str[esr >> ESR_ELx_EC_SHIFT];
+	return esr_class_str[ESR_ELx_EC(esr)];
 }
 
 /*
@@ -441,8 +626,17 @@ asmlinkage void bad_mode(struct pt_regs *regs, int reason, unsigned int esr)
 {
 	console_verbose();
 
+	sec_debug_save_badmode_info(reason, handler[reason],
+			esr, esr_get_class_string(esr));
+
 	pr_crit("Bad mode in %s handler detected, code 0x%08x -- %s\n",
 		handler[reason], esr, esr_get_class_string(esr));
+
+	if (esr >> ESR_ELx_EC_SHIFT == ESR_ELx_EC_SERROR) {
+		pr_crit("System error detected. ESR.ISS = %08x\n",
+			esr & 0xffffff);
+		arm64_check_cache_ecc(NULL);
+	}
 
 	die("Oops - bad mode", regs, 0);
 	local_irq_disable();
@@ -476,22 +670,22 @@ asmlinkage void bad_el0_sync(struct pt_regs *regs, int reason, unsigned int esr)
 
 void __pte_error(const char *file, int line, unsigned long val)
 {
-	pr_crit("%s:%d: bad pte %016lx.\n", file, line, val);
+	pr_err("%s:%d: bad pte %016lx.\n", file, line, val);
 }
 
 void __pmd_error(const char *file, int line, unsigned long val)
 {
-	pr_crit("%s:%d: bad pmd %016lx.\n", file, line, val);
+	pr_err("%s:%d: bad pmd %016lx.\n", file, line, val);
 }
 
 void __pud_error(const char *file, int line, unsigned long val)
 {
-	pr_crit("%s:%d: bad pud %016lx.\n", file, line, val);
+	pr_err("%s:%d: bad pud %016lx.\n", file, line, val);
 }
 
 void __pgd_error(const char *file, int line, unsigned long val)
 {
-	pr_crit("%s:%d: bad pgd %016lx.\n", file, line, val);
+	pr_err("%s:%d: bad pgd %016lx.\n", file, line, val);
 }
 
 /* GENERIC_BUG traps */

@@ -113,6 +113,9 @@
 #include <trace/events/skb.h>
 #include <net/busy_poll.h>
 #include "udp_impl.h"
+/* START_OF_KNOX_NPA */
+#include <net/ncm.h>
+/* END_OF_KNOX_NPA */
 
 struct udp_table udp_table __read_mostly;
 EXPORT_SYMBOL(udp_table);
@@ -257,6 +260,11 @@ int udp_lib_get_port(struct sock *sk, unsigned short snum,
 	} else {
 		hslot = udp_hashslot(udptable, net, snum);
 		spin_lock_bh(&hslot->lock);
+
+		if (inet_is_local_reserved_port(net, snum) &&
+		    !sysctl_reserved_port_bind)
+			goto fail_unlock;
+
 		if (hslot->count > 10) {
 			int exist;
 			unsigned int slot2 = udp_sk(sk)->udp_portaddr_hash ^ snum;
@@ -819,7 +827,7 @@ static int udp_send_skb(struct sk_buff *skb, struct flowi4 *fl4)
 	if (is_udplite)  				 /*     UDP-Lite      */
 		csum = udplite_csum(skb);
 
-	else if (sk->sk_no_check_tx) {   /* UDP csum disabled */
+	else if (sk->sk_no_check_tx && !skb_is_gso(skb)) {   /* UDP csum off */
 
 		skb->ip_summed = CHECKSUM_NONE;
 		goto send;
@@ -1025,7 +1033,8 @@ int udp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 		flowi4_init_output(fl4, ipc.oif, sk->sk_mark, tos,
 				   RT_SCOPE_UNIVERSE, sk->sk_protocol,
 				   flow_flags,
-				   faddr, saddr, dport, inet->inet_sport);
+				   faddr, saddr, dport, inet->inet_sport,
+				   sk->sk_uid);
 
 		if (!saddr && ipc.oif) {
 			err = l3mdev_get_saddr(net, ipc.oif, fl4);
@@ -1792,9 +1801,41 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 	if (sk) {
 		struct dst_entry *dst = skb_dst(skb);
 		int ret;
+		/* START_OF_KNOX_NPA */
+		struct nf_conn *ct = NULL;
+		enum ip_conntrack_info ctinfo;
+		struct nf_conntrack_tuple *tuple = NULL;
+		/* END_OF_KNOX_NPA */
 
 		if (unlikely(sk->sk_rx_dst != dst))
 			udp_sk_rx_dst_set(sk, dst);
+
+		/* START_OF_KNOX_NPA */
+		/* function to handle open flows with incoming udp packets */
+		if (check_ncm_flag()) {
+			if ( (skb) && (skb->dev) && (sk) && (sk->sk_protocol == IPPROTO_UDP) ) {
+				ct = nf_ct_get(skb, &ctinfo);
+				if ( (ct) && (!atomic_read(&ct->startFlow)) ) {
+					atomic_set(&ct->startFlow, 1);
+					ct->knox_uid = sk->knox_uid;
+					ct->knox_pid = sk->knox_pid;
+					memcpy(ct->process_name,sk->process_name,sizeof(ct->process_name)-1);
+					ct->knox_puid = sk->knox_puid;
+					ct->knox_ppid = sk->knox_ppid;
+					memcpy(ct->parent_process_name,sk->parent_process_name,sizeof(ct->parent_process_name)-1);
+					memcpy(ct->domain_name,sk->domain_name,sizeof(ct->domain_name)-1);
+					memcpy(ct->interface_name,skb->dev->name,sizeof(ct->interface_name)-1);
+					tuple = &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple;
+					if ( (tuple != NULL) && (ntohs(tuple->dst.u.udp.port) == DNS_PORT_NAP) && (ct->knox_uid == INIT_UID_NAP) && (sk->knox_dns_uid > INIT_UID_NAP) ) {
+						ct->knox_puid = sk->knox_dns_uid;
+						ct->knox_ppid = sk->knox_dns_pid;
+						memcpy(ct->parent_process_name,sk->dns_process_name,sizeof(ct->parent_process_name)-1);
+					}
+					knox_collect_conntrack_data(ct, NCM_FLOW_TYPE_OPEN, 3);
+				}
+			}
+		}
+		/* END_OF_KNOX_NPA */
 
 		ret = udp_queue_rcv_skb(sk, skb);
 		sock_put(sk);
@@ -1813,10 +1854,42 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 	sk = __udp4_lib_lookup_skb(skb, uh->source, uh->dest, udptable);
 	if (sk) {
 		int ret;
+		/* START_OF_KNOX_NPA */
+		struct nf_conn *ct = NULL;
+		enum ip_conntrack_info ctinfo;
+		struct nf_conntrack_tuple *tuple = NULL;
+		/* END_OF_KNOX_NPA */
 
 		if (inet_get_convert_csum(sk) && uh->check && !IS_UDPLITE(sk))
 			skb_checksum_try_convert(skb, IPPROTO_UDP, uh->check,
 						 inet_compute_pseudo);
+
+		/* START_OF_KNOX_NPA */
+		/* function to handle open flows with incoming udp packets */
+		if (check_ncm_flag()) {
+			if ( (skb) && (skb->dev) && (sk) && (sk->sk_protocol == IPPROTO_UDP) ) {
+				ct = nf_ct_get(skb, &ctinfo);
+				if ( (ct) && (!atomic_read(&ct->startFlow)) ) {
+					atomic_set(&ct->startFlow, 1);
+					ct->knox_uid = sk->knox_uid;
+					ct->knox_pid = sk->knox_pid;
+					memcpy(ct->process_name,sk->process_name,sizeof(ct->process_name)-1);
+					ct->knox_puid = sk->knox_puid;
+					ct->knox_ppid = sk->knox_ppid;
+					memcpy(ct->parent_process_name,sk->parent_process_name,sizeof(ct->parent_process_name)-1);
+					memcpy(ct->domain_name,sk->domain_name,sizeof(ct->domain_name)-1);
+					memcpy(ct->interface_name,skb->dev->name,sizeof(ct->interface_name)-1);
+					tuple = &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple;
+					if ( (tuple != NULL) && (ntohs(tuple->dst.u.udp.port) == DNS_PORT_NAP) && (ct->knox_uid == INIT_UID_NAP) && (sk->knox_dns_uid > INIT_UID_NAP) ) {
+						ct->knox_puid = sk->knox_dns_uid;
+						ct->knox_ppid = sk->knox_dns_pid;
+						memcpy(ct->parent_process_name,sk->dns_process_name,sizeof(ct->parent_process_name)-1);
+					}
+					knox_collect_conntrack_data(ct, NCM_FLOW_TYPE_OPEN, 4);
+				}
+			}
+		}
+		/* END_OF_KNOX_NPA */
 
 		ret = udp_queue_rcv_skb(sk, skb);
 		sock_put(sk);
@@ -2264,6 +2337,20 @@ unsigned int udp_poll(struct file *file, struct socket *sock, poll_table *wait)
 }
 EXPORT_SYMBOL(udp_poll);
 
+int udp_abort(struct sock *sk, int err)
+{
+	lock_sock(sk);
+
+	sk->sk_err = err;
+	sk->sk_error_report(sk);
+	udp_disconnect(sk, 0);
+
+	release_sock(sk);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(udp_abort);
+
 struct proto udp_prot = {
 	.name		   = "UDP",
 	.owner		   = THIS_MODULE,
@@ -2295,6 +2382,7 @@ struct proto udp_prot = {
 	.compat_getsockopt = compat_udp_getsockopt,
 #endif
 	.clear_sk	   = sk_prot_clear_portaddr_nulls,
+	.diag_destroy	   = udp_abort,
 };
 EXPORT_SYMBOL(udp_prot);
 
@@ -2432,14 +2520,20 @@ static void udp4_format_sock(struct sock *sp, struct seq_file *f,
 		int bucket)
 {
 	struct inet_sock *inet = inet_sk(sp);
+	struct udp_sock *up = udp_sk(sp);
 	__be32 dest = inet->inet_daddr;
 	__be32 src  = inet->inet_rcv_saddr;
 	__u16 destp	  = ntohs(inet->inet_dport);
 	__u16 srcp	  = ntohs(inet->inet_sport);
+	__u8 state = sp->sk_state;
+	if (up->encap_rcv)
+		state |= 0xF0;
+	else if (inet->transparent)
+		state |= 0x80;
 
 	seq_printf(f, "%5d: %08X:%04X %08X:%04X"
 		" %02X %08X:%08X %02X:%08lX %08X %5u %8d %lu %d %pK %d",
-		bucket, src, srcp, dest, destp, sp->sk_state,
+		bucket, src, srcp, dest, destp, state,
 		sk_wmem_alloc_get(sp),
 		sk_rmem_alloc_get(sp),
 		0, 0L, 0,

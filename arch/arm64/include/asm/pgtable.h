@@ -19,9 +19,14 @@
 #include <asm/bug.h>
 #include <asm/proc-fns.h>
 
+#include <asm/bug.h>
 #include <asm/memory.h>
 #include <asm/pgtable-hwdef.h>
 
+#ifdef CONFIG_TIMA_RKP
+#include <linux/rkp_entry.h>
+#include <asm/bug.h>
+#endif /* CONFIG_TIMA_RKP */
 /*
  * Software defined PTE bits definition.
  */
@@ -36,19 +41,13 @@
  *
  * VMEMAP_SIZE: allows the whole linear region to be covered by a struct page array
  *	(rounded up to PUD_SIZE).
- * VMALLOC_START: beginning of the kernel VA space
+ * VMALLOC_START: beginning of the kernel vmalloc space
  * VMALLOC_END: extends to the available space below vmmemmap, PCI I/O space,
  *	fixed mappings and modules
  */
 #define VMEMMAP_SIZE		ALIGN((1UL << (VA_BITS - PAGE_SHIFT)) * sizeof(struct page), PUD_SIZE)
 
-#ifndef CONFIG_KASAN
-#define VMALLOC_START		(VA_START)
-#else
-#include <asm/kasan.h>
-#define VMALLOC_START		(KASAN_SHADOW_END + SZ_64K)
-#endif
-
+#define VMALLOC_START		(MODULES_END)
 #define VMALLOC_END		(PAGE_OFFSET - PUD_SIZE - VMEMMAP_SIZE - SZ_64K)
 
 #define VMEMMAP_START		(VMALLOC_END + SZ_64K)
@@ -59,6 +58,7 @@
 
 #ifndef __ASSEMBLY__
 
+#include <asm/fixmap.h>
 #include <linux/mmdebug.h>
 
 extern void __pte_error(const char *file, int line, unsigned long val);
@@ -123,8 +123,8 @@ extern void __pgd_error(const char *file, int line, unsigned long val);
  * ZERO_PAGE is a global shared page that is always zero: used
  * for zero-mapped memory areas etc..
  */
-extern struct page *empty_zero_page;
-#define ZERO_PAGE(vaddr)	(empty_zero_page)
+extern unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)];
+#define ZERO_PAGE(vaddr)	virt_to_page(empty_zero_page)
 
 #define pte_ERROR(pte)		__pte_error(__FILE__, __LINE__, pte_val(pte))
 
@@ -135,16 +135,6 @@ extern struct page *empty_zero_page;
 #define pte_none(pte)		(!pte_val(pte))
 #define pte_clear(mm,addr,ptep)	set_pte(ptep, __pte(0))
 #define pte_page(pte)		(pfn_to_page(pte_pfn(pte)))
-
-/* Find an entry in the third-level page table. */
-#define pte_index(addr)		(((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1))
-
-#define pte_offset_kernel(dir,addr)	(pmd_page_vaddr(*(dir)) + pte_index(addr))
-
-#define pte_offset_map(dir,addr)	pte_offset_kernel((dir), (addr))
-#define pte_offset_map_nested(dir,addr)	pte_offset_kernel((dir), (addr))
-#define pte_unmap(pte)			do { } while (0)
-#define pte_unmap_nested(pte)		do { } while (0)
 
 /*
  * The following only work if pte_present(). Undefined behaviour otherwise.
@@ -168,6 +158,16 @@ extern struct page *empty_zero_page;
 #define pte_valid(pte)		(!!(pte_val(pte) & PTE_VALID))
 #define pte_valid_not_user(pte) \
 	((pte_val(pte) & (PTE_VALID | PTE_USER)) == PTE_VALID)
+#define pte_valid_young(pte) \
+	((pte_val(pte) & (PTE_VALID | PTE_AF)) == (PTE_VALID | PTE_AF))
+
+/*
+ * Could the pte be present in the TLB? We must check mm_tlb_flush_pending
+ * so that we don't erroneously return false for pages that have been
+ * remapped as PROT_NONE but are yet to be flushed from the TLB.
+ */
+#define pte_accessible(mm, pte)	\
+	(mm_tlb_flush_pending(mm) ? pte_present(pte) : pte_valid_young(pte))
 
 static inline pte_t clear_pte_bit(pte_t pte, pgprot_t prot)
 {
@@ -218,7 +218,8 @@ static inline pte_t pte_mkspecial(pte_t pte)
 
 static inline pte_t pte_mkcont(pte_t pte)
 {
-	return set_pte_bit(pte, __pgprot(PTE_CONT));
+	pte = set_pte_bit(pte, __pgprot(PTE_CONT));
+	return set_pte_bit(pte, __pgprot(PTE_TYPE_PAGE));
 }
 
 static inline pte_t pte_mknoncont(pte_t pte)
@@ -226,10 +227,84 @@ static inline pte_t pte_mknoncont(pte_t pte)
 	return clear_pte_bit(pte, __pgprot(PTE_CONT));
 }
 
+static inline pmd_t pmd_mkcont(pmd_t pmd)
+{
+	return __pmd(pmd_val(pmd) | PMD_SECT_CONT);
+}
+
+#ifdef CONFIG_TIMA_RKP
+extern  int printk(const char *s, ...);
+extern void panic(const char *fmt, ...);
+static inline void rkp_flush_cache(u64 addr)
+{
+	asm volatile(
+			"mov x1, %0\n"
+			"dc civac, x1\n"
+			:
+			: "r" (addr)
+			: "x1", "memory" );
+}
+static inline void rkp_inv_cache(u64 addr)
+{
+	asm volatile(
+			"mov x1, %0\n"
+			"dc ivac, x1\n"
+			:
+			: "r" (addr)
+			: "x1", "memory" );
+}
+#endif /* CONFIG_TIMA_RKP */
 static inline void set_pte(pte_t *ptep, pte_t pte)
 {
-	*ptep = pte;
+#ifdef CONFIG_ARM64_STRICT_BREAK_BEFORE_MAKE
+	pteval_t old = pte_val(*ptep);
+	pteval_t new = pte_val(pte);
 
+	/* Only problematic if valid -> valid */
+	if (!(old & new & PTE_VALID))
+		goto pte_ok;
+
+	/* Changing attributes should go via an invalid entry */
+	if (WARN_ON((old & PTE_ATTRINDX_MASK) != (new & PTE_ATTRINDX_MASK)))
+		goto pte_bad;
+
+	/* Change of OA is only an issue if one mapping is writable */
+	if (!(old & new & PTE_RDONLY) &&
+	    WARN_ON(pte_pfn(*ptep) != pte_pfn(pte)))
+		goto pte_bad;
+
+	goto pte_ok;
+
+pte_bad:
+	*ptep = __pte(0);
+	dsb(ishst);
+	asm("tlbi	vmalle1is");
+	dsb(ish);
+	isb();
+pte_ok:
+#endif
+
+#ifdef CONFIG_TIMA_RKP
+	if (pte && rkp_is_pg_dbl_mapped((u64)(pte))){	
+		panic("TIMA RKP : Double mapping Detected pte = 0x%llx ptep = %p", (u64)pte, ptep);
+                return;
+        }
+	if (rkp_is_pte_protected((u64)ptep)) {
+		rkp_flush_cache((u64)ptep);
+		rkp_call(RKP_PTE_SET, (unsigned long)ptep, pte_val(pte), 0, 0, 0);
+		rkp_flush_cache((u64)ptep);
+	} else {
+		asm volatile(	
+			"mov x1, %0\n"
+			"mov x2, %1\n"
+			"str x2, [x1]\n"
+			:
+			: "r" (ptep), "r" (pte)
+			: "x1", "x2", "memory" );
+	}
+#else
+	*ptep = pte;
+#endif /* CONFIG_TIMA_RKP */
 	/*
 	 * Only if the new pte is valid and kernel, otherwise TLB maintenance
 	 * or update_mmu_cache() have the necessary barriers.
@@ -299,7 +374,7 @@ static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 /*
  * Hugetlb definitions.
  */
-#define HUGE_MAX_HSTATE		2
+#define HUGE_MAX_HSTATE		4
 #define HPAGE_SHIFT		PMD_SHIFT
 #define HPAGE_SIZE		(_AC(1, UL) << HPAGE_SHIFT)
 #define HPAGE_MASK		(~(HPAGE_SIZE - 1))
@@ -354,6 +429,7 @@ void pmdp_splitting_flush(struct vm_area_struct *vma, unsigned long address,
 #define pmd_mksplitting(pmd)	pte_pmd(pte_mkspecial(pmd_pte(pmd)))
 #define pmd_mkold(pmd)		pte_pmd(pte_mkold(pmd_pte(pmd)))
 #define pmd_mkwrite(pmd)	pte_pmd(pte_mkwrite(pmd_pte(pmd)))
+#define pmd_mkclean(pmd)       pte_pmd(pte_mkclean(pmd_pte(pmd)))
 #define pmd_mkdirty(pmd)	pte_pmd(pte_mkdirty(pmd_pte(pmd)))
 #define pmd_mkyoung(pmd)	pte_pmd(pte_mkyoung(pmd_pte(pmd)))
 #define pmd_mknotpresent(pmd)	(__pmd(pmd_val(pmd) & ~PMD_SECT_VALID))
@@ -398,6 +474,9 @@ extern pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 
 #define pmd_bad(pmd)		(!(pmd_val(pmd) & 2))
 
+#ifdef CONFIG_TIMA_RKP
+#define pmd_block(pmd)		((pmd_val(pmd) & 0x3)  == 1)
+#endif
 #define pmd_table(pmd)		((pmd_val(pmd) & PMD_TYPE_MASK) == \
 				 PMD_TYPE_TABLE)
 #define pmd_sect(pmd)		((pmd_val(pmd) & PMD_TYPE_MASK) == \
@@ -415,7 +494,23 @@ extern pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 
 static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 {
+#ifdef CONFIG_TIMA_RKP
+	if (rkp_def_init_done || rkp_is_pg_protected((u64)pmdp)) {
+		rkp_flush_cache((u64)pmdp);
+		rkp_call(RKP_PMD_SET, (unsigned long)pmdp, pmd_val(pmd), 0, 0, 0);
+		rkp_flush_cache((u64)pmdp);
+	} else {
+		asm volatile(
+			"mov x1, %0\n"
+			"mov x2, %1\n"
+			"str x2, [x1]\n"
+			:
+			: "r" (pmdp), "r" (pmd)
+			: "x1", "x2", "memory" );
+	}
+#else
 	*pmdp = pmd;
+#endif /* CONFIG_TIMA_RKP */
 	dsb(ishst);
 	isb();
 }
@@ -425,12 +520,48 @@ static inline void pmd_clear(pmd_t *pmdp)
 	set_pmd(pmdp, __pmd(0));
 }
 
-static inline pte_t *pmd_page_vaddr(pmd_t pmd)
+static inline phys_addr_t pmd_page_paddr(pmd_t pmd)
 {
-	return __va(pmd_val(pmd) & PHYS_MASK & (s32)PAGE_MASK);
+	return pmd_val(pmd) & PHYS_MASK & (s32)PAGE_MASK;
 }
 
+/* Find an entry in the third-level page table. */
+#define pte_index(addr)		(((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1))
+
+#define pte_offset_phys(dir,addr)	(pmd_page_paddr(*(dir)) + pte_index(addr) * sizeof(pte_t))
+#define pte_offset_kernel(dir,addr)	((pte_t *)__va(pte_offset_phys((dir), (addr))))
+
+#ifndef CONFIG_TIMA_RKP
+#define pte_offset_map(dir,addr)	pte_offset_kernel((dir), (addr))
+#else
+void msm_trigger_wdog_bite(void);
+#define pte_offset_map(dir,addr) \
+({	\
+	pte_t *__pte;	\
+	if (unlikely(pmd_none(*(dir))))   \
+	{	\
+		printk("TIMA RKP : pmd is not valid, try to invalidate cache for pmd:%llx %llx\n", (u64)(*(dir)), (u64)dir);	\
+		rkp_inv_cache((u64)dir);	\
+		printk("TIMA RKP : Invalidate done, pmd:%llx \n", (u64)(*(dir)));	\
+		if (pmd_none(*(dir)))	\
+			msm_trigger_wdog_bite();	\
+	}	\
+	__pte = pte_offset_kernel((dir), (addr));	\
+})
+#endif
+
+#define pte_offset_map_nested(dir,addr)	pte_offset_kernel((dir), (addr))
+#define pte_unmap(pte)			do { } while (0)
+#define pte_unmap_nested(pte)		do { } while (0)
+
+#define pte_set_fixmap(addr)		((pte_t *)set_fixmap_offset(FIX_PTE, addr))
+#define pte_set_fixmap_offset(pmd, addr)	pte_set_fixmap(pte_offset_phys(pmd, addr))
+#define pte_clear_fixmap()		clear_fixmap(FIX_PTE)
+
 #define pmd_page(pmd)		pfn_to_page(__phys_to_pfn(pmd_val(pmd) & PHYS_MASK))
+
+/* use ONLY for statically allocated translation tables */
+#define pte_offset_kimg(dir,addr)	((pte_t *)__phys_to_kimg(pte_offset_phys((dir), (addr))))
 
 /*
  * Conversion functions: convert a page and protection to a page entry,
@@ -448,7 +579,23 @@ static inline pte_t *pmd_page_vaddr(pmd_t pmd)
 
 static inline void set_pud(pud_t *pudp, pud_t pud)
 {
+#ifdef CONFIG_TIMA_RKP
+	if (rkp_def_init_done || rkp_is_pg_protected((u64)pudp)) {
+		rkp_flush_cache((u64)pudp);
+		rkp_call(RKP_PGD_SET, (unsigned long)pudp, pud_val(pud), 0, 0, 0);
+		rkp_flush_cache((u64)pudp);
+	} else {
+		asm volatile(	
+			"mov x1, %0\n"
+			"mov x2, %1\n"
+			"str x2, [x1]\n"
+			:
+			: "r" (pudp), "r" (pud)
+			: "x1", "x2", "memory" );
+	}
+#else
 	*pudp = pud;
+#endif
 	dsb(ishst);
 	isb();
 }
@@ -458,20 +605,36 @@ static inline void pud_clear(pud_t *pudp)
 	set_pud(pudp, __pud(0));
 }
 
-static inline pmd_t *pud_page_vaddr(pud_t pud)
+static inline phys_addr_t pud_page_paddr(pud_t pud)
 {
-	return __va(pud_val(pud) & PHYS_MASK & (s32)PAGE_MASK);
+	return pud_val(pud) & PHYS_MASK & (s32)PAGE_MASK;
 }
 
 /* Find an entry in the second-level page table. */
 #define pmd_index(addr)		(((addr) >> PMD_SHIFT) & (PTRS_PER_PMD - 1))
 
-static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
-{
-	return (pmd_t *)pud_page_vaddr(*pud) + pmd_index(addr);
-}
+#define pmd_offset_phys(dir, addr)	(pud_page_paddr(*(dir)) + pmd_index(addr) * sizeof(pmd_t))
+#define pmd_offset(dir, addr)		((pmd_t *)__va(pmd_offset_phys((dir), (addr))))
+
+#define pmd_set_fixmap(addr)		((pmd_t *)set_fixmap_offset(FIX_PMD, addr))
+#define pmd_set_fixmap_offset(pud, addr)	pmd_set_fixmap(pmd_offset_phys(pud, addr))
+#define pmd_clear_fixmap()		clear_fixmap(FIX_PMD)
 
 #define pud_page(pud)		pfn_to_page(__phys_to_pfn(pud_val(pud) & PHYS_MASK))
+
+/* use ONLY for statically allocated translation tables */
+#define pmd_offset_kimg(dir,addr)	((pmd_t *)__phys_to_kimg(pmd_offset_phys((dir), (addr))))
+
+#else
+
+#define pud_page_paddr(pud)	({ BUILD_BUG(); 0; })
+
+/* Match pmd_offset folding in <asm/generic/pgtable-nopmd.h> */
+#define pmd_set_fixmap(addr)		NULL
+#define pmd_set_fixmap_offset(pudp, addr)	((pmd_t *)pudp)
+#define pmd_clear_fixmap()
+
+#define pmd_offset_kimg(dir,addr)	((pmd_t *)dir)
 
 #endif	/* CONFIG_PGTABLE_LEVELS > 2 */
 
@@ -494,20 +657,36 @@ static inline void pgd_clear(pgd_t *pgdp)
 	set_pgd(pgdp, __pgd(0));
 }
 
-static inline pud_t *pgd_page_vaddr(pgd_t pgd)
+static inline phys_addr_t pgd_page_paddr(pgd_t pgd)
 {
-	return __va(pgd_val(pgd) & PHYS_MASK & (s32)PAGE_MASK);
+	return pgd_val(pgd) & PHYS_MASK & (s32)PAGE_MASK;
 }
 
 /* Find an entry in the frst-level page table. */
 #define pud_index(addr)		(((addr) >> PUD_SHIFT) & (PTRS_PER_PUD - 1))
 
-static inline pud_t *pud_offset(pgd_t *pgd, unsigned long addr)
-{
-	return (pud_t *)pgd_page_vaddr(*pgd) + pud_index(addr);
-}
+#define pud_offset_phys(dir, addr)	(pgd_page_paddr(*(dir)) + pud_index(addr) * sizeof(pud_t))
+#define pud_offset(dir, addr)		((pud_t *)__va(pud_offset_phys((dir), (addr))))
+
+#define pud_set_fixmap(addr)		((pud_t *)set_fixmap_offset(FIX_PUD, addr))
+#define pud_set_fixmap_offset(pgd, addr)	pud_set_fixmap(pud_offset_phys(pgd, addr))
+#define pud_clear_fixmap()		clear_fixmap(FIX_PUD)
 
 #define pgd_page(pgd)		pfn_to_page(__phys_to_pfn(pgd_val(pgd) & PHYS_MASK))
+
+/* use ONLY for statically allocated translation tables */
+#define pud_offset_kimg(dir,addr)	((pud_t *)__phys_to_kimg(pud_offset_phys((dir), (addr))))
+
+#else
+
+#define pgd_page_paddr(pgd)	({ BUILD_BUG(); 0;})
+
+/* Match pud_offset folding in <asm/generic/pgtable-nopud.h> */
+#define pud_set_fixmap(addr)		NULL
+#define pud_set_fixmap_offset(pgdp, addr)	((pud_t *)pgdp)
+#define pud_clear_fixmap()
+
+#define pud_offset_kimg(dir,addr)	((pud_t *)dir)
 
 #endif  /* CONFIG_PGTABLE_LEVELS > 3 */
 
@@ -516,10 +695,15 @@ static inline pud_t *pud_offset(pgd_t *pgd, unsigned long addr)
 /* to find an entry in a page-table-directory */
 #define pgd_index(addr)		(((addr) >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1))
 
-#define pgd_offset(mm, addr)	((mm)->pgd+pgd_index(addr))
+#define pgd_offset_raw(pgd, addr)	((pgd) + pgd_index(addr))
+
+#define pgd_offset(mm, addr)	(pgd_offset_raw((mm)->pgd, (addr)))
 
 /* to find an entry in a kernel page-table-directory */
 #define pgd_offset_k(addr)	pgd_offset(&init_mm, addr)
+
+#define pgd_set_fixmap(addr)	((pgd_t *)set_fixmap_offset(FIX_PGD, addr))
+#define pgd_clear_fixmap()	clear_fixmap(FIX_PGD)
 
 static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 {
@@ -681,7 +865,8 @@ extern int kern_addr_valid(unsigned long addr);
 
 #include <asm-generic/pgtable.h>
 
-#define pgtable_cache_init() do { } while (0)
+void pgd_cache_init(void);
+#define pgtable_cache_init	pgd_cache_init
 
 /*
  * On AArch64, the cache coherency is handled via the set_pte_at() function.

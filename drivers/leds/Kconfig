@@ -587,6 +587,41 @@ config LEDS_POWERNV
 	  To compile this driver as a module, choose 'm' here: the module
 	  will be called leds-powernv.
 
+config LEDS_SM5720_RGB
+	tristate "Support for SM5720 RGB-LED"
+	depends on MFD_SM5720 && LEDS_CLASS && I2C
+	help
+	  If you say yes here you will get support for
+	  for the SM5720 RGB-LED chip.
+
+config LEDS_QPNP
+	tristate "Support for QPNP LEDs"
+	depends on LEDS_CLASS && SPMI
+	help
+	  This driver supports the LED functionality of Qualcomm Technologies,
+	  Inc. QPNP PMICs.  It primarily supports controlling tri-color RGB
+	  LEDs in both PWM and light pattern generator (LPG) modes.  For older
+	  PMICs, it also supports WLEDs and flash LEDs.
+
+config LEDS_QPNP_FLASH_V2
+	tristate "Support for QPNP V2 Flash LEDs"
+	depends on LEDS_CLASS && MFD_SPMI_PMIC
+	help
+	  This driver supports the flash V2 LED functionality of Qualcomm
+	  Technologies, Inc. QPNP PMICs.  This driver supports PMICs starting
+	  from PMI8998.  It can configure the flash LED target current for
+	  several independent channels.  It also supports various over current
+	  and over temperature mitigation features.
+
+config LEDS_QPNP_WLED
+	tristate "Support for QPNP WLED"
+	depends on LEDS_CLASS && SPMI
+	help
+	  This driver supports the WLED (White LED) functionality of Qualcomm
+	  Technologies, Inc. QPNP PMICs.  WLED is used for LCD backlight with
+	  variable brightness.  It also supports outputting the Avdd supply for
+	  AMOLED displays.
+
 config LEDS_SYSCON
 	bool "LED support for LEDs on system controllers"
 	depends on LEDS_CLASS=y
@@ -604,6 +639,27 @@ config LEDS_VERSATILE
 	help
 	  This option enabled support for the LEDs on the ARM Versatile
 	  and RealView boards. Say Y to enabled these.
+
+config LEDS_S2MPB02
+	bool "LED support for the S2MPB02"
+	depends on LEDS_CLASS
+	help
+	  This option enables support for the LEDs on the S2MPB02.
+
+config LEDS_S2MU004_RGB
+        bool "RGB LED support for the S2MU004"
+        depends on LEDS_CLASS
+        help
+          If you say yes here you will get support for
+          for the S2MU004 RGB led chip.
+
+config SAMSUNG_SECURE_CAMERA
+	  tristate "Flash current for Secure camera"
+	  depends on LEDS_CLASS
+	  default n
+	  help
+	  Enables support for flash current for secure camera
+
 
 comment "LED Triggers"
 source "drivers/leds/trigger/Kconfig"

@@ -26,6 +26,7 @@
 #include "segment.h"
 #include "trace.h"
 #include <trace/events/f2fs.h>
+#include <trace/events/android_fs.h>
 
 static void f2fs_read_end_io(struct bio *bio)
 {
@@ -742,6 +743,10 @@ static int get_data_block_dio(struct inode *inode, sector_t iblock,
 static int get_data_block_bmap(struct inode *inode, sector_t iblock,
 			struct buffer_head *bh_result, int create)
 {
+	/* Block number less than F2FS MAX BLOCKS */
+	if (unlikely(iblock >= max_file_size(0)))
+		return -EFBIG;
+
 	return __get_data_block(inode, iblock, bh_result, create,
 						F2FS_GET_BLOCK_BMAP);
 }
@@ -1401,6 +1406,16 @@ static int f2fs_write_begin(struct file *file, struct address_space *mapping,
 	struct dnode_of_data dn;
 	int err = 0;
 
+	if (trace_android_fs_datawrite_start_enabled()) {
+		char *path, pathbuf[MAX_TRACE_PATHBUF_LEN];
+
+		path = android_fstrace_get_pathname(pathbuf,
+						    MAX_TRACE_PATHBUF_LEN,
+						    inode);
+		trace_android_fs_datawrite_start(inode, pos, len,
+						 current->pid, path,
+						 current->comm);
+	}
 	trace_f2fs_write_begin(inode, pos, len, flags);
 
 	f2fs_balance_fs(sbi);
@@ -1529,6 +1544,7 @@ static int f2fs_write_end(struct file *file,
 {
 	struct inode *inode = page->mapping->host;
 
+	trace_android_fs_datawrite_end(inode, pos, len);
 	trace_f2fs_write_end(inode, pos, len, copied);
 
 	set_page_dirty(page);
@@ -1582,6 +1598,28 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 
 	trace_f2fs_direct_IO_enter(inode, offset, count, iov_iter_rw(iter));
 
+	if (trace_android_fs_dataread_start_enabled() &&
+	    (iov_iter_rw(iter) == READ)) {
+		char *path, pathbuf[MAX_TRACE_PATHBUF_LEN];
+
+		path = android_fstrace_get_pathname(pathbuf,
+						    MAX_TRACE_PATHBUF_LEN,
+						    inode);
+		trace_android_fs_dataread_start(inode, offset,
+						count, current->pid, path,
+						current->comm);
+	}
+	if (trace_android_fs_datawrite_start_enabled() &&
+	    (iov_iter_rw(iter) == WRITE)) {
+		char *path, pathbuf[MAX_TRACE_PATHBUF_LEN];
+
+		path = android_fstrace_get_pathname(pathbuf,
+						    MAX_TRACE_PATHBUF_LEN,
+						    inode);
+		trace_android_fs_datawrite_start(inode, offset, count,
+						 current->pid, path,
+						 current->comm);
+	}
 	if (iov_iter_rw(iter) == WRITE) {
 		__allocate_data_blocks(inode, offset, count);
 		if (unlikely(f2fs_cp_error(F2FS_I_SB(inode)))) {
@@ -1594,6 +1632,13 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 out:
 	if (err < 0 && iov_iter_rw(iter) == WRITE)
 		f2fs_write_failed(mapping, offset + count);
+
+	if (trace_android_fs_dataread_start_enabled() &&
+	    (iov_iter_rw(iter) == READ))
+		trace_android_fs_dataread_end(inode, offset, count);
+	if (trace_android_fs_datawrite_start_enabled() &&
+	    (iov_iter_rw(iter) == WRITE))
+		trace_android_fs_datawrite_end(inode, offset, count);
 
 	trace_f2fs_direct_IO_exit(inode, offset, count, iov_iter_rw(iter), err);
 

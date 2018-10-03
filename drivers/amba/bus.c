@@ -82,7 +82,8 @@ static ssize_t driver_override_store(struct device *_dev,
 	struct amba_device *dev = to_amba_device(_dev);
 	char *driver_override, *old = dev->driver_override, *cp;
 
-	if (count > PATH_MAX)
+	/* We need to keep extra room for a newline */
+	if (count >= (PAGE_SIZE - 1))
 		return -EINVAL;
 
 	driver_override = kstrndup(buf, count, GFP_KERNEL);
@@ -249,13 +250,13 @@ static int amba_probe(struct device *dev)
 
 		pm_runtime_get_noresume(dev);
 		pm_runtime_set_active(dev);
-		pm_runtime_enable(dev);
 
 		ret = pcdrv->probe(pcdev, id);
-		if (ret == 0)
+		if (ret == 0){
+			pm_runtime_enable(dev);
 			break;
+		}
 
-		pm_runtime_disable(dev);
 		pm_runtime_set_suspended(dev);
 		pm_runtime_put_noidle(dev);
 

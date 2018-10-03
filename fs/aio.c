@@ -261,6 +261,7 @@ static int __init aio_setup(void)
 	aio_mnt = kern_mount(&aio_fs);
 	if (IS_ERR(aio_mnt))
 		panic("Failed to create aio fs mount.");
+	aio_mnt->mnt_flags |= MNT_NOEXEC;
 
 	kiocb_cachep = KMEM_CACHE(aio_kiocb, SLAB_HWCACHE_ALIGN|SLAB_PANIC);
 	kioctx_cachep = KMEM_CACHE(kioctx,SLAB_HWCACHE_ALIGN|SLAB_PANIC);
@@ -1321,7 +1322,7 @@ static long read_events(struct kioctx *ctx, long min_nr, long nr,
 SYSCALL_DEFINE2(io_setup, unsigned, nr_events, aio_context_t __user *, ctxp)
 {
 	struct kioctx *ioctx = NULL;
-	unsigned long ctx;
+	unsigned long ctx = 0;
 	long ret;
 
 	ret = get_user(ctx, ctxp);

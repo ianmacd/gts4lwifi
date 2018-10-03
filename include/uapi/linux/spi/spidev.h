@@ -136,6 +136,11 @@ struct spi_ioc_transfer {
 #define SPI_IOC_RD_MODE32		_IOR(SPI_IOC_MAGIC, 5, __u32)
 #define SPI_IOC_WR_MODE32		_IOW(SPI_IOC_MAGIC, 5, __u32)
 
-
+/*Added below commands to support spi to i2c port expander design*/  //msd
+#define SPI_TO_I2C_WRITE_IOC_MESSAGE(N) _IOW(SPI_IOC_MAGIC, 5, char[SPI_MSGSIZE(N)])
+#define SPI_TO_I2C_READ_IOC_MESSAGE(N) _IOW(SPI_IOC_MAGIC, 6, char[SPI_MSGSIZE(N)])
+#define SPI_TO_I2C_WRITE_READ_IOC_MESSAGE(N) _IOW(SPI_IOC_MAGIC, 7, char[SPI_MSGSIZE(N)])
+#define SPI_TO_I2C_WRITE_WRITE_IOC_MESSAGE(N) _IOW(SPI_IOC_MAGIC, 8, char[SPI_MSGSIZE(N)])
+#define	FPGA_SPI_PROGRAM_IOC_MESSAGE(N) _IOW(SPI_IOC_MAGIC, 9, char[SPI_MSGSIZE(N)])
 
 #endif /* SPIDEV_H */

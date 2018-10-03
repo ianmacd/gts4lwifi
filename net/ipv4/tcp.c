@@ -302,6 +302,12 @@ EXPORT_SYMBOL(sysctl_tcp_wmem);
 atomic_long_t tcp_memory_allocated;	/* Current allocated memory. */
 EXPORT_SYMBOL(tcp_memory_allocated);
 
+int sysctl_tcp_delack_seg __read_mostly = TCP_DELACK_SEG;
+EXPORT_SYMBOL(sysctl_tcp_delack_seg);
+
+int sysctl_tcp_use_userconfig __read_mostly;
+EXPORT_SYMBOL(sysctl_tcp_use_userconfig);
+
 /*
  * Current number of TCP sockets.
  */
@@ -1407,8 +1413,11 @@ static void tcp_cleanup_rbuf(struct sock *sk, int copied)
 		   /* Delayed ACKs frequently hit locked sockets during bulk
 		    * receive. */
 		if (icsk->icsk_ack.blocked ||
-		    /* Once-per-two-segments ACK was not sent by tcp_input.c */
-		    tp->rcv_nxt - tp->rcv_wup > icsk->icsk_ack.rcv_mss ||
+		    /* Once-per-sysctl_tcp_delack_seg segments
+			  * ACK was not sent by tcp_input.c
+			  */
+		    tp->rcv_nxt - tp->rcv_wup > (icsk->icsk_ack.rcv_mss) *
+						sysctl_tcp_delack_seg ||
 		    /*
 		     * If this read emptied read buffer, we send ACK, if
 		     * connection is not bidirectional, user drained
@@ -2260,6 +2269,10 @@ int tcp_disconnect(struct sock *sk, int flags)
 	tcp_set_ca_state(sk, TCP_CA_Open);
 	tcp_clear_retrans(tp);
 	inet_csk_delack_init(sk);
+	/* Initialize rcv_mss to TCP_MIN_MSS to avoid division by 0
+         * issue in __tcp_select_window()
+         */
+	icsk->icsk_ack.rcv_mss = TCP_MIN_MSS;
 	tcp_init_send_head(sk);
 	memset(&tp->rx_opt, 0, sizeof(tp->rx_opt));
 	__sk_dst_reset(sk);
@@ -2723,6 +2736,14 @@ void tcp_get_info(struct sock *sk, struct tcp_info *info)
 	rate64 = rate != ~0U ? rate : ~0ULL;
 	put_unaligned(rate64, &info->tcpi_max_pacing_rate);
 
+	/* Expose reference count for socket */
+	if (sk->sk_socket) {
+		struct file *filep = sk->sk_socket->file;
+
+		if (filep)
+			info->tcpi_count = file_count(filep);
+	}
+
 	do {
 		start = u64_stats_fetch_begin_irq(&tp->syncp);
 		put_unaligned(tp->bytes_acked, &info->tcpi_bytes_acked);
@@ -3095,6 +3116,52 @@ void tcp_done(struct sock *sk)
 		inet_csk_destroy_sock(sk);
 }
 EXPORT_SYMBOL_GPL(tcp_done);
+
+int tcp_abort(struct sock *sk, int err)
+{
+	if (!sk_fullsock(sk)) {
+		if (sk->sk_state == TCP_NEW_SYN_RECV) {
+			struct request_sock *req = inet_reqsk(sk);
+
+			local_bh_disable();
+			inet_csk_reqsk_queue_drop_and_put(req->rsk_listener,
+							  req);
+			local_bh_enable();
+			return 0;
+		}
+		sock_gen_put(sk);
+		return -EOPNOTSUPP;
+	}
+
+	/* Don't race with userspace socket closes such as tcp_close. */
+	lock_sock(sk);
+
+	if (sk->sk_state == TCP_LISTEN) {
+		tcp_set_state(sk, TCP_CLOSE);
+		inet_csk_listen_stop(sk);
+	}
+
+	/* Don't race with BH socket closes such as inet_csk_listen_stop. */
+	local_bh_disable();
+	bh_lock_sock(sk);
+
+	if (!sock_flag(sk, SOCK_DEAD)) {
+		sk->sk_err = err;
+		/* This barrier is coupled with smp_rmb() in tcp_poll() */
+		smp_wmb();
+		sk->sk_error_report(sk);
+		if (tcp_need_reset(sk->sk_state))
+			tcp_send_active_reset(sk, GFP_ATOMIC);
+		tcp_done(sk);
+	}
+
+	bh_unlock_sock(sk);
+	local_bh_enable();
+	release_sock(sk);
+	sock_put(sk);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(tcp_abort);
 
 extern struct tcp_congestion_ops tcp_reno;
 

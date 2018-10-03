@@ -122,7 +122,8 @@ static inline bool should_drop_frame(struct sk_buff *skb, int present_fcs_len,
 	hdr = (void *)(skb->data + rtap_vendor_space);
 
 	if (status->flag & (RX_FLAG_FAILED_FCS_CRC |
-			    RX_FLAG_FAILED_PLCP_CRC))
+			    RX_FLAG_FAILED_PLCP_CRC |
+			    RX_FLAG_ONLY_MONITOR))
 		return true;
 
 	if (unlikely(skb->len < 16 + present_fcs_len + rtap_vendor_space))
@@ -507,7 +508,7 @@ ieee80211_rx_monitor(struct ieee80211_local *local, struct sk_buff *origskb,
 		return NULL;
 	}
 
-	if (!local->monitors) {
+	if (!local->monitors || (status->flag & RX_FLAG_SKIP_MONITOR)) {
 		if (should_drop_frame(origskb, present_fcs_len,
 				      rtap_vendor_space)) {
 			dev_kfree_skb(origskb);
@@ -3478,6 +3479,7 @@ static bool ieee80211_prepare_and_rx_handle(struct ieee80211_rx_data *rx,
  * be called with rcu_read_lock protection.
  */
 static void __ieee80211_rx_handle_packet(struct ieee80211_hw *hw,
+					 struct ieee80211_sta *pubsta,
 					 struct sk_buff *skb,
 					 struct napi_struct *napi)
 {
@@ -3487,7 +3489,6 @@ static void __ieee80211_rx_handle_packet(struct ieee80211_hw *hw,
 	__le16 fc;
 	struct ieee80211_rx_data rx;
 	struct ieee80211_sub_if_data *prev;
-	struct sta_info *sta, *prev_sta;
 	struct rhash_head *tmp;
 	int err = 0;
 
@@ -3523,7 +3524,14 @@ static void __ieee80211_rx_handle_packet(struct ieee80211_hw *hw,
 		     ieee80211_is_beacon(hdr->frame_control)))
 		ieee80211_scan_rx(local, skb);
 
-	if (ieee80211_is_data(fc)) {
+	if (pubsta) {
+		rx.sta = container_of(pubsta, struct sta_info, sta);
+		rx.sdata = rx.sta->sdata;
+		if (ieee80211_prepare_and_rx_handle(&rx, skb, true))
+			return;
+		goto out;
+	} else if (ieee80211_is_data(fc)) {
+		struct sta_info *sta, *prev_sta;
 		const struct bucket_table *tbl;
 
 		prev_sta = NULL;
@@ -3597,8 +3605,8 @@ static void __ieee80211_rx_handle_packet(struct ieee80211_hw *hw,
  * This is the receive path handler. It is called by a low level driver when an
  * 802.11 MPDU is received from the hardware.
  */
-void ieee80211_rx_napi(struct ieee80211_hw *hw, struct sk_buff *skb,
-		       struct napi_struct *napi)
+void ieee80211_rx_napi(struct ieee80211_hw *hw, struct ieee80211_sta *pubsta,
+		       struct sk_buff *skb, struct napi_struct *napi)
 {
 	struct ieee80211_local *local = hw_to_local(hw);
 	struct ieee80211_rate *rate = NULL;
@@ -3697,7 +3705,8 @@ void ieee80211_rx_napi(struct ieee80211_hw *hw, struct sk_buff *skb,
 	ieee80211_tpt_led_trig_rx(local,
 			((struct ieee80211_hdr *)skb->data)->frame_control,
 			skb->len);
-	__ieee80211_rx_handle_packet(hw, skb, napi);
+
+	__ieee80211_rx_handle_packet(hw, pubsta, skb, napi);
 
 	rcu_read_unlock();
 

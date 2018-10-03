@@ -879,6 +879,8 @@ static irqreturn_t stmpe_irq(int irq, void *data)
 	if (ret < 0)
 		return IRQ_NONE;
 
+	dev_info(stmpe->dev," [STMPE] %s start, israddr:%x, num:%d, isr:%x,%x,%x\n", __func__, israddr, num, isr[0], isr[1], isr[2]);
+
 	for (i = 0; i < num; i++) {
 		int bank = num - i - 1;
 		u8 status = isr[i];
@@ -1237,21 +1239,41 @@ int stmpe_probe(struct stmpe_client_info *ci, enum stmpe_partnum partnum)
 	if (ret)
 		return ret;
 
-	if (stmpe->irq >= 0) {
-		ret = stmpe_irq_init(stmpe, np);
+	stmpe->reset = devm_regulator_get_optional(ci->dev, "reset");
+	if (!IS_ERR(stmpe->reset)) {
+		ret = regulator_enable(stmpe->reset);
 		if (ret)
-			return ret;
+			dev_warn(ci->dev, "failed to enable reset supply\n");
+	}	
 
-		ret = devm_request_threaded_irq(ci->dev, stmpe->irq, NULL,
-				stmpe_irq, pdata->irq_trigger | IRQF_ONESHOT,
-				"stmpe", stmpe);
-		if (ret) {
-			dev_err(stmpe->dev, "failed to request IRQ: %d\n",
-					ret);
-			return ret;
+	stmpe->ledvddo = devm_regulator_get_optional(ci->dev, "ledvddo");
+	if (!IS_ERR(stmpe->ledvddo)) {
+		dev_err(ci->dev, "failed to get the ledvddo supply\n");
+	}else if(regulator_is_enabled(stmpe->ledvddo)){
+		ret= regulator_disable(stmpe->ledvddo);
+		if(ret){	
+		dev_err(ci->dev,"Fail to disable regulator led\n");
 		}
 	}
 
+	/*stmpe1801 only use keypad irq, so neednot request irq in stmpe*/
+	if (partnum != STMPE1801){
+		if (stmpe->irq >= 0) {
+			ret = stmpe_irq_init(stmpe, np);
+			if (ret)
+				return ret;
+
+			ret = devm_request_threaded_irq(ci->dev, stmpe->irq, NULL,
+					stmpe_irq, pdata->irq_trigger | IRQF_ONESHOT,
+					"stmpe", stmpe);
+			if (ret) {
+				dev_err(stmpe->dev, "failed to request IRQ: %d\n",
+						ret);
+				return ret;
+			}
+		}
+	}
+	
 	ret = stmpe_devices_init(stmpe);
 	if (!ret)
 		return 0;

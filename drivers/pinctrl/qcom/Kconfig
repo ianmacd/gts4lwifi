@@ -96,4 +96,68 @@ config PINCTRL_QCOM_SSBI_PMIC
          which are using SSBI for communication with SoC. Example PMIC's
          devices are pm8058 and pm8921.
 
+config PINCTRL_MSM8998
+	tristate "Qualcomm MSM8998 pin controller driver"
+	depends on GPIOLIB && OF
+	select PINCTRL_MSM
+	help
+	  This is the pinctrl, pinmux, pinconf and gpiolib driver for the
+	  Qualcomm TLMM block found in the Qualcomm MSM8998 platform.
+
+config PINCTRL_MSM8996
+	tristate "Qualcomm MSM8996 pin controller driver"
+	depends on GPIOLIB && OF
+	select PINCTRL_MSM
+	help
+	  This is the pinctrl, pinmux, pinconf and gpiolib driver for the
+	  Qualcomm TLMM block found in the Qualcomm MSM8996 platform.
+
+config PINCTRL_SDM660
+	tristate "Qualcomm SDM660 pin controller driver"
+	depends on GPIOLIB && OF
+	select PINCTRL_MSM
+	help
+	  This is the pinctrl, pinmux, pinconf and gpiolib driver for the
+	  Qualcomm TLMM block found in the Qualcomm SDM660 platform.
+
+config PINCTRL_WCD
+	tristate "Qualcomm Technologies, Inc WCD pin controller driver"
+	depends on WCD934X_CODEC
+	help
+	  This is the pinctrl, pinmux, pinconf and gpiolib driver for the
+	  WCD gpio controller block.
+
+config PINCTRL_LPI
+	tristate "Qualcomm Technologies, Inc LPI pin controller driver"
+	depends on GPIOLIB && OF
+	help
+	  This is the pinctrl, pinmux, pinconf and gpiolib driver for the
+	  LPI gpio controller block.
+
+config SENSORS_FP_SPI_GPIO_START
+    depends on SENSORS_FINGERPRINT
+	int "Fingerprint spi gpio number start"
+	default 0
+
+config SENSORS_FP_SPI_GPIO_END
+    depends on SENSORS_FINGERPRINT
+	int "Fingerprint spi gpio number end"
+	default 0
+
+config IRIS_I2C_START
+	int "Iris i2c number start"
+	default 0
+
+config IRIS_I2C_END
+	int "Iris i2c number end"
+	default 0
+
+config IRIS_GPIO_START
+	int "Iris gpio number start"
+	default 0
+
+config IRIS_GPIO_END
+	int "Iris gpio number end"
+	default 0
+
 endif

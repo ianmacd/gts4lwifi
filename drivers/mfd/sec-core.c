@@ -550,6 +550,7 @@ static struct i2c_driver sec_pmic_driver = {
 		   .name = "sec_pmic",
 		   .pm = &sec_pmic_pm_ops,
 		   .of_match_table = of_match_ptr(sec_dt_match),
+		   .suppress_bind_attrs = true,
 	},
 	.probe = sec_pmic_probe,
 	.remove = sec_pmic_remove,

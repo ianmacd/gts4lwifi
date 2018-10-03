@@ -16,6 +16,10 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 
+#ifdef CONFIG_CPU_FREQ_LIMIT_USERSPACE
+#include <linux/cpufreq.h>
+#include <linux/cpufreq_limit.h>
+#endif
 #include "power.h"
 
 DEFINE_MUTEX(pm_mutex);
@@ -38,11 +42,18 @@ int unregister_pm_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL_GPL(unregister_pm_notifier);
 
-int pm_notifier_call_chain(unsigned long val)
+int __pm_notifier_call_chain(unsigned long val, int nr_to_call, int *nr_calls)
 {
-	int ret = blocking_notifier_call_chain(&pm_chain_head, val, NULL);
+	int ret;
+
+	ret = __blocking_notifier_call_chain(&pm_chain_head, val, NULL,
+						nr_to_call, nr_calls);
 
 	return notifier_to_errno(ret);
+}
+int pm_notifier_call_chain(unsigned long val)
+{
+	return __pm_notifier_call_chain(val, -1, NULL);
 }
 
 /* If set, devices may be suspended and resumed asynchronously. */
@@ -280,13 +291,7 @@ static ssize_t pm_wakeup_irq_show(struct kobject *kobj,
 	return pm_wakeup_irq ? sprintf(buf, "%u\n", pm_wakeup_irq) : -ENODATA;
 }
 
-static ssize_t pm_wakeup_irq_store(struct kobject *kobj,
-					struct kobj_attribute *attr,
-					const char *buf, size_t n)
-{
-	return -EINVAL;
-}
-power_attr(pm_wakeup_irq);
+power_attr_ro(pm_wakeup_irq);
 
 #else /* !CONFIG_PM_SLEEP_DEBUG */
 static inline void pm_print_times_init(void) {}
@@ -529,6 +534,207 @@ power_attr(wake_unlock);
 #endif /* CONFIG_PM_WAKELOCKS */
 #endif /* CONFIG_PM_SLEEP */
 
+#ifdef CONFIG_CPU_FREQ_LIMIT_USERSPACE
+static int cpufreq_max_limit_val = -1;
+static int cpufreq_min_limit_val = -1;
+struct cpufreq_limit_handle *cpufreq_max_hd;
+struct cpufreq_limit_handle *cpufreq_min_hd;
+DEFINE_MUTEX(cpufreq_limit_mutex);
+
+static ssize_t cpufreq_table_show(struct kobject *kobj,
+			struct kobj_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+#ifndef CONFIG_SCHED_HMP
+	int i, count = 0;
+	unsigned int freq;
+
+	struct cpufreq_frequency_table *table;
+
+	table = cpufreq_frequency_get_table(0);
+	if (table == NULL)
+		return 0;
+
+	for (i = 0; table[i].frequency != CPUFREQ_TABLE_END; i++)
+		count = i;
+
+	for (i = count; i >= 0; i--) {
+		freq = table[i].frequency;
+
+		if (freq == CPUFREQ_ENTRY_INVALID)
+			continue;
+
+		len += sprintf(buf + len, "%u ", freq);
+	}
+
+	len--;
+	len += sprintf(buf + len, "\n");
+#else
+	len = cpufreq_limit_get_table(buf);
+#endif
+
+	return len;
+}
+
+static ssize_t cpufreq_table_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t n)
+{
+	pr_err("%s: cpufreq_table is read-only\n", __func__);
+	return -EINVAL;
+}
+
+static ssize_t cpufreq_max_limit_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
+{
+	return sprintf(buf, "%d\n", cpufreq_max_limit_val);
+}
+
+static ssize_t cpufreq_max_limit_store(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t n)
+{
+	int val;
+	ssize_t ret = -EINVAL;
+
+	if (sscanf(buf, "%d", &val) != 1) {
+		pr_err("%s: Invalid cpufreq format\n", __func__);
+		goto out;
+	}
+
+	mutex_lock(&cpufreq_limit_mutex);
+	if (cpufreq_max_hd) {
+		cpufreq_limit_put(cpufreq_max_hd);
+		cpufreq_max_hd = NULL;
+	}
+
+	/* big core hotplut in/out regarding max limit clock */
+	cpufreq_limit_corectl(val);
+
+	if (val != -1) {
+		cpufreq_max_hd = cpufreq_limit_max_freq(val, "user lock(max)");
+		if (IS_ERR(cpufreq_max_hd)) {
+			pr_err("%s: fail to get the handle\n", __func__);
+			cpufreq_max_hd = NULL;
+		}
+	}
+
+	cpufreq_max_hd ?
+		(cpufreq_max_limit_val = val) : (cpufreq_max_limit_val = -1);
+
+	mutex_unlock(&cpufreq_limit_mutex);
+	ret = n;
+out:
+	return ret;
+}
+
+static ssize_t cpufreq_min_limit_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
+{
+	return sprintf(buf, "%d\n", cpufreq_min_limit_val);
+}
+
+static ssize_t cpufreq_min_limit_store(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t n)
+{
+	int val;
+	ssize_t ret = -EINVAL;
+
+	if (sscanf(buf, "%d", &val) != 1) {
+		pr_err("%s: Invalid cpufreq format\n", __func__);
+		goto out;
+	}
+
+	mutex_lock(&cpufreq_limit_mutex);
+	if (cpufreq_min_hd) {
+		cpufreq_limit_put(cpufreq_min_hd);
+		cpufreq_min_hd = NULL;
+	}
+
+	if (val != -1) {
+		cpufreq_min_hd = cpufreq_limit_min_freq(val, "user lock(min)");
+		if (IS_ERR(cpufreq_min_hd)) {
+			pr_err("%s: fail to get the handle\n", __func__);
+			cpufreq_min_hd = NULL;
+		}
+	}
+
+	cpufreq_min_hd ?
+		(cpufreq_min_limit_val = val) : (cpufreq_min_limit_val = -1);
+
+	mutex_unlock(&cpufreq_limit_mutex);
+	ret = n;
+out:
+	return ret;
+}
+
+power_attr(cpufreq_table);
+power_attr(cpufreq_max_limit);
+power_attr(cpufreq_min_limit);
+
+typedef struct {
+	char name[20];
+	struct cpufreq_limit_handle *handle;
+	int id_mask;
+} cpufreq_limit_list_t;
+
+cpufreq_limit_list_t cpufreq_limit_list[] = {
+	{
+		.name = "touch min",
+		.handle = NULL,
+		.id_mask = DVFS_TOUCH_ID_MASK
+	},
+	{
+		.name = "finger min",
+		.handle = NULL ,
+		.id_mask = DVFS_FINGER_ID_MASK
+	},
+	{
+		.name = "multi-touch min",
+		.handle = NULL ,
+		.id_mask = DVFS_MULTI_TOUCH_ID_MASK
+	},
+};
+
+int set_freq_limit(unsigned long id, unsigned int freq)
+{
+	ssize_t ret = -EINVAL;
+	int mask = (1 << id);
+	int i;
+	cpufreq_limit_list_t *list;
+
+	mutex_lock(&cpufreq_limit_mutex);
+
+	pr_debug("%s: id=%d freq=%d\n", __func__, (int)id, freq);
+
+	for (i = 0; i < ARRAY_SIZE(cpufreq_limit_list); i++) {
+		list = &cpufreq_limit_list[i];
+		/* min lock */
+		if (list->id_mask & mask) {
+			if (freq != -1) {
+				list->handle = cpufreq_limit_min_freq(freq, list->name);
+				if (IS_ERR(list->handle)) {
+					pr_err("%s: fail to get the handle\n", __func__);
+					list->handle = NULL;
+					goto out;
+				}
+			} else if (list->handle) {
+				cpufreq_limit_put(list->handle);
+				list->handle = NULL;
+			}
+		}
+	}
+	ret = 0;
+
+out:
+	mutex_unlock(&cpufreq_limit_mutex);
+	return ret;
+}
+#endif
+
 #ifdef CONFIG_PM_TRACE
 int pm_trace_enabled;
 
@@ -564,14 +770,7 @@ static ssize_t pm_trace_dev_match_show(struct kobject *kobj,
 	return show_trace_dev_match(buf, PAGE_SIZE);
 }
 
-static ssize_t
-pm_trace_dev_match_store(struct kobject *kobj, struct kobj_attribute *attr,
-			 const char *buf, size_t n)
-{
-	return -EINVAL;
-}
-
-power_attr(pm_trace_dev_match);
+power_attr_ro(pm_trace_dev_match);
 
 #endif /* CONFIG_PM_TRACE */
 
@@ -599,6 +798,90 @@ power_attr(pm_freeze_timeout);
 
 #endif	/* CONFIG_FREEZER*/
 
+#ifdef CONFIG_SEC_PM
+#ifndef CONFIG_MACH_KELLYLTE_CHN_OPEN
+extern int qpnp_set_resin_wk_int(int en);
+static int volkey_wakeup = 1;
+static ssize_t volkey_wakeup_show(struct kobject *kobj,
+				  struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", volkey_wakeup);
+}
+
+static ssize_t volkey_wakeup_store(struct kobject *kobj,
+				   struct kobj_attribute *attr,
+				   const char *buf, size_t n)
+{
+	int val;
+
+	if (sscanf(buf, "%d", &val) != 1)
+		return -EINVAL;
+
+	if (volkey_wakeup == val) {
+		return n;
+	}
+
+	volkey_wakeup = val;
+	qpnp_set_resin_wk_int(volkey_wakeup);
+
+	return n;
+
+}
+
+power_attr(volkey_wakeup);
+#endif
+
+int poff_status;
+static ssize_t rtc_status_show(struct kobject *kobj,
+				  struct kobj_attribute *attr, char *buf)
+{
+	int status = poff_status;
+	pr_info("complete power off status(%d)\n", poff_status);
+	poff_status = 0;
+	return sprintf(buf, "%d\n", status);
+}
+
+static ssize_t rtc_status_store(struct kobject *kobj,
+				   struct kobj_attribute *attr,
+				   const char *buf, size_t n)
+{
+	pr_warn("not support\n");
+	return n;
+}
+
+power_attr(rtc_status);
+#endif /* CONFIG_SEC_PM */
+
+#if defined(CONFIG_FOTA_LIMIT)
+static char fota_limit_str[] =
+#if defined(CONFIG_ARCH_MSM8998)
+	"[START]\n"
+	"/sys/power/cpufreq_max_limit 1497600\n"
+	"[STOP]\n"
+	"/sys/power/cpufreq_max_limit -1 \n"
+	"[END]\n";
+#else
+	"[NOT_SUPPORT]\n";
+#endif
+
+static ssize_t fota_limit_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
+{
+	pr_info("%s\n", __func__);
+	return sprintf(buf, "%s", fota_limit_str);
+}
+
+static struct kobj_attribute fota_limit_attr = {
+	.attr	= {
+		.name = __stringify(fota_limit),
+		.mode = 0440,
+	},
+	.show	= fota_limit_show,
+};
+#endif /* CONFIG_FOTA_LIMIT */
+
+
 static struct attribute * g[] = {
 	&state_attr.attr,
 #ifdef CONFIG_PM_TRACE
@@ -623,9 +906,23 @@ static struct attribute * g[] = {
 	&pm_wakeup_irq_attr.attr,
 #endif
 #endif
+#ifdef CONFIG_CPU_FREQ_LIMIT_USERSPACE
+	&cpufreq_table_attr.attr,
+	&cpufreq_max_limit_attr.attr,
+	&cpufreq_min_limit_attr.attr,
+#endif
 #ifdef CONFIG_FREEZER
 	&pm_freeze_timeout_attr.attr,
 #endif
+#ifdef CONFIG_SEC_PM
+#ifndef CONFIG_MACH_KELLYLTE_CHN_OPEN
+	&volkey_wakeup_attr.attr,
+#endif
+	&rtc_status_attr.attr,
+#endif
+#if defined(CONFIG_FOTA_LIMIT)
+	&fota_limit_attr.attr,
+#endif /* CONFIG_FOTA_LIMIT */
 	NULL,
 };
 

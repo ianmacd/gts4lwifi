@@ -86,6 +86,8 @@ struct stmpe_client_info;
 struct stmpe {
 	struct regulator *vcc;
 	struct regulator *vio;
+	struct regulator *reset;
+	struct regulator *ledvddo;
 	struct mutex lock;
 	struct mutex irq_lock;
 	struct device *dev;

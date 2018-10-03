@@ -22,7 +22,7 @@
 #include <linux/of_reserved_mem.h>
 #include <linux/sort.h>
 
-#define MAX_RESERVED_REGIONS	16
+#define MAX_RESERVED_REGIONS	32
 static struct reserved_mem reserved_mem[MAX_RESERVED_REGIONS];
 static int reserved_mem_count;
 
@@ -153,7 +153,7 @@ static int __init __reserved_mem_alloc_size(unsigned long node,
 			ret = early_init_dt_alloc_reserved_memory_arch(size,
 					align, start, end, nomap, &base);
 			if (ret == 0) {
-				pr_debug("Reserved memory: allocated memory for '%s' node: base %pa, size %ld MiB\n",
+				pr_info("Reserved memory: allocated memory for '%s' node: base %pa, size %ld MiB\n",
 					uname, &base,
 					(unsigned long)size / SZ_1M);
 				break;
@@ -165,7 +165,7 @@ static int __init __reserved_mem_alloc_size(unsigned long node,
 		ret = early_init_dt_alloc_reserved_memory_arch(size, align,
 							0, 0, nomap, &base);
 		if (ret == 0)
-			pr_debug("Reserved memory: allocated memory for '%s' node: base %pa, size %ld MiB\n",
+			pr_info("Reserved memory: allocated memory for '%s' node: base %pa, size %ld MiB\n",
 				uname, &base, (unsigned long)size / SZ_1M);
 	}
 

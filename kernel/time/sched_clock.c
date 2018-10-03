@@ -18,6 +18,7 @@
 #include <linux/sched_clock.h>
 #include <linux/seqlock.h>
 #include <linux/bitops.h>
+#include <asm/smp.h>
 
 /**
  * struct clock_read_data - data required to read from sched_clock()
@@ -44,6 +45,10 @@ struct clock_read_data {
 	u32 shift;
 };
 
+#define DEBUG_ARRY_SZ 200
+static u64 timer_array[CONFIG_NR_CPUS][DEBUG_ARRY_SZ] = {{0}} ;
+static u64 timer_array_cyc_to_ns[CONFIG_NR_CPUS][DEBUG_ARRY_SZ] = {{0}} ;
+static int timer_index[CONFIG_NR_CPUS] = {0};
 /**
  * struct clock_data - all data needed for sched_clock() (including
  *                     registration of a new clock source)
@@ -70,6 +75,12 @@ struct clock_data {
 
 static struct hrtimer sched_clock_timer;
 static int irqtime = -1;
+static int initialized;
+static u64 suspend_ns;
+/* temp code for debug purpose */
+u64 suspend_cycles;
+static u64 resume_cycles;
+
 
 core_param(irqtime, irqtime, int, 0400);
 
@@ -95,17 +106,25 @@ static inline u64 notrace cyc_to_ns(u64 cyc, u32 mult, u32 shift)
 
 unsigned long long notrace sched_clock(void)
 {
-	u64 cyc, res;
+	u64 cyc, tmp_cyc, res, tmp_cyc_to_ns;
 	unsigned long seq;
 	struct clock_read_data *rd;
+	int cpu = raw_smp_processor_id();
 
 	do {
 		seq = raw_read_seqcount(&cd.seq);
 		rd = cd.read_data + (seq & 1);
 
-		cyc = (rd->read_sched_clock() - rd->epoch_cyc) &
+		tmp_cyc = rd->read_sched_clock();
+		cyc = (tmp_cyc - rd->epoch_cyc) &
 		      rd->sched_clock_mask;
-		res = rd->epoch_ns + cyc_to_ns(cyc, rd->mult, rd->shift);
+		tmp_cyc_to_ns = cyc_to_ns(cyc, rd->mult, rd->shift);
+		res = rd->epoch_ns + tmp_cyc_to_ns;
+
+		timer_array[cpu][timer_index[cpu]] = tmp_cyc;
+		timer_array_cyc_to_ns[cpu][timer_index[cpu]] = tmp_cyc_to_ns;
+		timer_index[cpu] = (timer_index[cpu] + 1) % DEBUG_ARRY_SZ;
+
 	} while (read_seqcount_retry(&cd.seq, seq));
 
 	return res;
@@ -231,6 +250,11 @@ sched_clock_register(u64 (*read)(void), int bits, unsigned long rate)
 	pr_debug("Registered %pF as sched_clock source\n", read);
 }
 
+int sched_clock_initialized(void)
+{
+	return initialized;
+}
+
 void __init sched_clock_postinit(void)
 {
 	/*
@@ -249,6 +273,8 @@ void __init sched_clock_postinit(void)
 	hrtimer_init(&sched_clock_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	sched_clock_timer.function = sched_clock_poll;
 	hrtimer_start(&sched_clock_timer, cd.wrap_kt, HRTIMER_MODE_REL);
+
+	initialized = 1;
 }
 
 /*
@@ -274,6 +300,11 @@ static int sched_clock_suspend(void)
 	struct clock_read_data *rd = &cd.read_data[0];
 
 	update_sched_clock();
+
+	suspend_ns = rd->epoch_ns;
+	suspend_cycles = rd->epoch_cyc;
+	pr_info("suspend ns:%17llu	suspend cycles:%17llu\n",
+				rd->epoch_ns, rd->epoch_cyc);
 	hrtimer_cancel(&sched_clock_timer);
 	rd->read_sched_clock = suspended_sched_clock_read;
 
@@ -285,6 +316,8 @@ static void sched_clock_resume(void)
 	struct clock_read_data *rd = &cd.read_data[0];
 
 	rd->epoch_cyc = cd.actual_read_sched_clock();
+	resume_cycles = rd->epoch_cyc;
+	pr_info("resume cycles:%17llu\n", rd->epoch_cyc);
 	hrtimer_start(&sched_clock_timer, cd.wrap_kt, HRTIMER_MODE_REL);
 	rd->read_sched_clock = cd.actual_read_sched_clock;
 }

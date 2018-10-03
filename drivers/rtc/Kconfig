@@ -139,6 +139,21 @@ config RTC_DRV_TEST
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-test.
 
+config RTC_AUTO_PWRON
+        bool "RTC Auto Power On Alarm by PMICs"
+        depends on RTC_DRV_QPNP
+        default n
+        help
+          Support for the auto power on alarm on alarm booting supporting PMICs.
+          Say Y if you want to enable this feature.
+
+config RTC_AUTO_PWRON_PARAM
+	bool "RTC Auto Power on Alarm with parameter partition"
+	depends on RTC_AUTO_PWRON
+	default n
+	help
+	  Use parameter partition to save alarm time
+
 comment "I2C RTC drivers"
 	depends on I2C
 
@@ -1590,6 +1605,15 @@ config RTC_DRV_MOXART
 
 	   This driver can also be built as a module. If so, the module
 	   will be called rtc-moxart
+
+config RTC_DRV_QPNP
+	tristate "Qualcomm Technologies, Inc. QPNP PMIC RTC"
+	depends on SPMI
+	help
+	  This enables support for the RTC found on Qualcomm Technologies, Inc.
+	  QPNP PMIC chips.  This driver supports using the PMIC RTC peripheral
+	  to wake a mobile device up from suspend or to wake it up from power-
+	  off.
 
 config RTC_DRV_MT6397
 	tristate "Mediatek Real Time Clock driver"

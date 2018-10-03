@@ -36,9 +36,28 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/of.h>
+#include <linux/of_platform.h>
+#include <linux/gpio.h>
+#include <linux/of_gpio.h>
 
 #include "ufshcd.h"
 #include "ufshcd-pltfrm.h"
+
+static int ufshcd_parse_reset_info(struct ufs_hba *hba)
+{
+	int ret = 0;
+
+	hba->core_reset = devm_reset_control_get(hba->dev,
+				"core_reset");
+	if (IS_ERR(hba->core_reset)) {
+		ret = PTR_ERR(hba->core_reset);
+		dev_err(hba->dev, "core_reset unavailable,err = %d\n",
+				ret);
+		hba->core_reset = NULL;
+	}
+
+	return ret;
+}
 
 static int ufshcd_parse_clock_info(struct ufs_hba *hba)
 {
@@ -161,7 +180,7 @@ static int ufshcd_populate_vreg(struct device *dev, const char *name,
 	if (ret) {
 		dev_err(dev, "%s: unable to find %s err %d\n",
 				__func__, prop_name, ret);
-		goto out_free;
+		goto out;
 	}
 
 	vreg->min_uA = 0;
@@ -183,9 +202,6 @@ static int ufshcd_populate_vreg(struct device *dev, const char *name,
 
 	goto out;
 
-out_free:
-	devm_kfree(dev, vreg);
-	vreg = NULL;
 out:
 	if (!ret)
 		*out_vreg = vreg;
@@ -224,7 +240,34 @@ out:
 	return err;
 }
 
-#ifdef CONFIG_PM
+static void ufshcd_parse_pm_levels(struct ufs_hba *hba)
+{
+	struct device *dev = hba->dev;
+	struct device_node *np = dev->of_node;
+
+	if (np) {
+		if (of_property_read_u32(np, "rpm-level", &hba->rpm_lvl))
+			hba->rpm_lvl = -1;
+		if (of_property_read_u32(np, "spm-level", &hba->spm_lvl))
+			hba->spm_lvl = -1;
+	}
+}
+
+static int ufshcd_parse_pinctrl_info(struct ufs_hba *hba)
+{
+	int ret = 0;
+
+	/* Try to obtain pinctrl handle */
+	hba->pctrl = devm_pinctrl_get(hba->dev);
+	if (IS_ERR(hba->pctrl)) {
+		ret = PTR_ERR(hba->pctrl);
+		hba->pctrl = NULL;
+	}
+
+	return ret;
+}
+
+#ifdef CONFIG_SMP
 /**
  * ufshcd_pltfrm_suspend - suspend power management function
  * @dev: pointer to device handle
@@ -277,15 +320,58 @@ void ufshcd_pltfrm_shutdown(struct platform_device *pdev)
 }
 EXPORT_SYMBOL_GPL(ufshcd_pltfrm_shutdown);
 
+static void ufshcd_parse_gpio_controls(struct ufs_hba *hba)
+{
+	struct device *dev = hba->dev;
+	struct device_node *np = dev->of_node;
+	struct pinctrl *ufs_hw_reset_pinctrl;
+	struct pinctrl_state *ufs_power_on;
+	struct pinctrl_state *ufs_power_off;
+	int ret = 0;
+
+	hba->hw_reset_gpio = of_get_named_gpio(np, "sec-ufs,hw-reset-gpio", 0);
+
+	if (!gpio_is_valid(hba->hw_reset_gpio))
+		return;
+
+	pr_err("UFS get hw_reset gpio %d.\n", hba->hw_reset_gpio);
+
+	ufs_hw_reset_pinctrl = devm_pinctrl_get(dev);
+	if (IS_ERR(ufs_hw_reset_pinctrl)) {
+		pr_err("%s: pinctrl_get is failed.\n", __func__);
+		ufs_hw_reset_pinctrl = NULL;
+	} else {
+		ufs_power_on = pinctrl_lookup_state(ufs_hw_reset_pinctrl, "ufs_poweron");
+		if (IS_ERR(ufs_power_on)) {
+			pr_err("%s: fail to ufs_poweron lookup_state.\n", __func__);
+			goto err_exit;
+		}
+
+		ufs_power_off = pinctrl_lookup_state(ufs_hw_reset_pinctrl, "ufs_poweroff");
+		if (IS_ERR(ufs_power_off)) {
+			pr_err("%s: fail to ufs_poweroff lookup_state.\n", __func__);
+			goto err_exit;
+		}
+
+		ret = pinctrl_select_state(ufs_hw_reset_pinctrl, ufs_power_on);
+		if (ret)
+			pr_err("%s: fail to select_state ufs power on.\n", __func__);
+
+ err_exit:
+		devm_pinctrl_put(ufs_hw_reset_pinctrl);
+	}
+	return;
+}
+
 /**
  * ufshcd_pltfrm_init - probe routine of the driver
  * @pdev: pointer to Platform device handle
- * @vops: pointer to variant ops
+ * @var: pointer to variant specific data
  *
  * Returns 0 on success, non-zero value on failure
  */
 int ufshcd_pltfrm_init(struct platform_device *pdev,
-		       struct ufs_hba_variant_ops *vops)
+		       struct ufs_hba_variant *var)
 {
 	struct ufs_hba *hba;
 	void __iomem *mmio_base;
@@ -313,7 +399,7 @@ int ufshcd_pltfrm_init(struct platform_device *pdev,
 		goto out;
 	}
 
-	hba->vops = vops;
+	hba->var = var;
 
 	err = ufshcd_parse_clock_info(hba);
 	if (err) {
@@ -328,22 +414,39 @@ int ufshcd_pltfrm_init(struct platform_device *pdev,
 		goto dealloc_host;
 	}
 
-	pm_runtime_set_active(&pdev->dev);
-	pm_runtime_enable(&pdev->dev);
+	err = ufshcd_parse_reset_info(hba);
+	if (err) {
+		dev_err(&pdev->dev, "%s: reset parse failed %d\n",
+				__func__, err);
+		goto dealloc_host;
+	}
+
+	err = ufshcd_parse_pinctrl_info(hba);
+	if (err) {
+		dev_dbg(&pdev->dev, "%s: unable to parse pinctrl data %d\n",
+				__func__, err);
+		/* let's not fail the probe */
+	}
+
+	ufshcd_parse_pm_levels(hba);
+
+	ufshcd_parse_gpio_controls(hba);
+
+	if (!dev->dma_mask)
+		dev->dma_mask = &dev->coherent_dma_mask;
 
 	err = ufshcd_init(hba, mmio_base, irq);
 	if (err) {
 		dev_err(dev, "Intialization failed\n");
-		goto out_disable_rpm;
+		goto dealloc_host;
 	}
 
 	platform_set_drvdata(pdev, hba);
 
-	return 0;
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
 
-out_disable_rpm:
-	pm_runtime_disable(&pdev->dev);
-	pm_runtime_set_suspended(&pdev->dev);
+	return 0;
 dealloc_host:
 	ufshcd_dealloc_host(hba);
 out:

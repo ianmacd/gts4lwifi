@@ -28,6 +28,7 @@
 #include <linux/err.h>
 #include <linux/string.h>
 #include <linux/mm.h>
+#include <linux/bio.h>
 
 struct linux_binprm;
 struct cred;
@@ -54,6 +55,13 @@ struct xattr;
 struct xfrm_sec_ctx;
 struct mm_struct;
 
+#ifdef CONFIG_RKP_KDP
+/* For understand size of struct cred*/
+#include <linux/rkp_entry.h>
+#endif /*CONFIG_RKP_KDP*/
+
+
+
 /* If capable should audit the security request */
 #define SECURITY_CAP_NOAUDIT 0
 #define SECURITY_CAP_AUDIT 1
@@ -65,6 +73,38 @@ struct ctl_table;
 struct audit_krule;
 struct user_namespace;
 struct timezone;
+
+#ifdef CONFIG_RKP_KDP
+
+#define rocred_uc_read(x) atomic_read(x->use_cnt)
+#define rocred_uc_inc(x)  atomic_inc(x->use_cnt)
+#define rocred_uc_dec_and_test(x) atomic_dec_and_test(x->use_cnt)
+#define rocred_uc_inc_not_zero(x) atomic_inc_not_zero(x->use_cnt)
+#define rocred_uc_set(x,v) atomic_set(x->use_cnt,v)
+
+#define RKP_RO_AREA __attribute__((section (".rkp.prot.page")))
+extern int rkp_cred_enable;
+extern char __rkp_ro_start[], __rkp_ro_end[];
+extern struct cred init_cred;
+extern struct task_security_struct init_sec;
+/*Check whether the address belong to Cred Area*/
+static inline u8 rkp_ro_page(unsigned long addr)
+{
+	if(!rkp_cred_enable)
+		return (u8)0;
+	if((addr == ((unsigned long)&init_cred)) || 
+		(addr == ((unsigned long)&init_sec)))
+		return (u8)1;
+	else
+		return rkp_is_pg_protected(addr);
+}
+extern int security_integrity_current(void);
+
+#else
+#define RKP_RO_AREA   
+#define security_integrity_current()  0
+#endif /*CONFIG_RKP_KDP*/
+
 
 /* These functions are in security/commoncap.c */
 extern int cap_capable(const struct cred *cred, struct user_namespace *ns,
@@ -244,6 +284,7 @@ int security_old_inode_init_security(struct inode *inode, struct inode *dir,
 				     const struct qstr *qstr, const char **name,
 				     void **value, size_t *len);
 int security_inode_create(struct inode *dir, struct dentry *dentry, umode_t mode);
+int security_inode_post_create(struct inode *dir, struct dentry *dentry, umode_t mode);
 int security_inode_link(struct dentry *old_dentry, struct inode *dir,
 			 struct dentry *new_dentry);
 int security_inode_unlink(struct inode *dir, struct dentry *dentry);
@@ -599,6 +640,13 @@ static inline int security_old_inode_init_security(struct inode *inode,
 }
 
 static inline int security_inode_create(struct inode *dir,
+					 struct dentry *dentry,
+					 umode_t mode)
+{
+	return 0;
+}
+
+static inline int security_inode_post_create(struct inode *dir,
 					 struct dentry *dentry,
 					 umode_t mode)
 {

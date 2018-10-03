@@ -66,6 +66,35 @@ static int ecryptfs_writepage(struct page *page, struct writeback_control *wbc)
 {
 	int rc;
 
+	// WTL_EDM_START
+	/* MDM 3.1 START */
+	struct inode *inode;
+	struct ecryptfs_crypt_stat *crypt_stat;
+
+	inode = page->mapping->host;
+	crypt_stat = &ecryptfs_inode_to_private(inode)->crypt_stat;
+	if (!(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
+		size_t size;
+		loff_t file_size = i_size_read(inode);
+		pgoff_t end_page_index = file_size >> PAGE_CACHE_SHIFT;
+		if (end_page_index < page->index)
+			size = 0;
+		else if (end_page_index == page->index)
+			size = file_size & ~PAGE_CACHE_MASK;
+		else
+			size = PAGE_CACHE_SIZE;
+
+		rc = ecryptfs_write_lower_page_segment(inode, page, 0, size);
+		if (unlikely(rc)) {
+			ecryptfs_printk(KERN_WARNING, "Error write ""page (upper index [0x%.16lx])\n", page->index);
+			ClearPageUptodate(page);
+		} else
+			SetPageUptodate(page);
+		goto out;
+	}
+	/* MDM 3.1 END */
+	// WTL_EDM_END
+
 	rc = ecryptfs_encrypt_page(page);
 	if (rc) {
 		ecryptfs_printk(KERN_WARNING, "Error encrypting "
@@ -552,10 +581,16 @@ static sector_t ecryptfs_bmap(struct address_space *mapping, sector_t block)
 	return rc;
 }
 
+void ecryptfs_freepage(struct page *page)
+{
+	zero_user(page, 0, PAGE_CACHE_SIZE);
+}
+
 const struct address_space_operations ecryptfs_aops = {
 	.writepage = ecryptfs_writepage,
 	.readpage = ecryptfs_readpage,
 	.write_begin = ecryptfs_write_begin,
 	.write_end = ecryptfs_write_end,
 	.bmap = ecryptfs_bmap,
+	.freepage = ecryptfs_freepage,
 };

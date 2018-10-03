@@ -27,10 +27,17 @@
 #include <asm/cpufeature.h>
 #include <asm/errno.h>
 #include <asm/esr.h>
+#include <asm/irq.h>
 #include <asm/memory.h>
+#include <asm/ptrace.h>
 #include <asm/thread_info.h>
+#include <asm/uaccess.h>
 #include <asm/asm-uaccess.h>
 #include <asm/unistd.h>
+
+#ifdef CONFIG_RKP_CFP
+#include <asm/rkp_cfp.h>
+#endif
 
 /*
  * Context tracking subsystem.  Used to instrument transitions
@@ -80,6 +87,13 @@
 	stp	x10, x11, [sp, #16 * 5]
 	stp	x12, x13, [sp, #16 * 6]
 	stp	x14, x15, [sp, #16 * 7]
+#ifdef CONFIG_RKP_CFP_ROPP
+#ifndef CONFIG_RKP_CFP_TEST
+	.if	\el == 1
+	mov	RRK, xzr
+	.endif
+#endif
+#endif
 	stp	x16, x17, [sp, #16 * 8]
 	stp	x18, x19, [sp, #16 * 9]
 	stp	x20, x21, [sp, #16 * 10]
@@ -90,21 +104,51 @@
 
 	.if	\el == 0
 	mrs	x21, sp_el0
-	get_thread_info tsk			// Ensure MDSCR_EL1.SS is clear,
+	mov	tsk, sp
+	and	tsk, tsk, #~(THREAD_SIZE - 1)	// Ensure MDSCR_EL1.SS is clear,
 	ldr	x19, [tsk, #TI_FLAGS]		// since we can unmask debug
+#ifdef CONFIG_RKP_CFP_ROPP
+	ropp_new_key	tsk
+#endif
 	disable_step_tsk x19, x20		// exceptions when scheduling.
+
+	mov	x29, xzr			// fp pointed to user-space
 	.else
+#ifdef CONFIG_RKP_CFP_ROPP
+	get_thread_info	tsk			//handle the case of using irq_stack
+	ropp_load_key 	tsk
+#endif
 	add	x21, sp, #S_FRAME_SIZE
-	get_thread_info tsk
-	/* Save the task's original addr_limit and set USER_DS (TASK_SIZE_64) */
-	ldr	x20, [tsk, #TI_ADDR_LIMIT]
-	str	x20, [sp, #S_ORIG_ADDR_LIMIT]
-	mov	x20, #TASK_SIZE_64
-	str	x20, [tsk, #TI_ADDR_LIMIT]
-	.endif /* \el == 0 */
+	.endif
 	mrs	x22, elr_el1
 	mrs	x23, spsr_el1
 	stp	lr, x21, [sp, #S_LR]
+
+#ifdef CONFIG_ARM64_SW_TTBR0_PAN
+	/*
+	 * Set the TTBR0 PAN bit in SPSR. When the exception is taken from
+	 * EL0, there is no need to check the state of TTBR0_EL1 since
+	 * accesses are always enabled.
+	 * Note that the meaning of this bit differs from the ARMv8.1 PAN
+	 * feature as all TTBR0_EL1 accesses are disabled, not just those to
+	 * user mappings.
+	 */
+alternative_if ARM64_HAS_PAN
+	b	1f				// skip TTBR0 PAN
+alternative_else_nop_endif
+
+	.if	\el != 0
+	mrs	x21, ttbr0_el1
+	tst	x21, #0xffff << 48		// Check for the reserved ASID
+	orr	x23, x23, #PSR_PAN_BIT		// Set the emulated PAN in the saved SPSR
+	b.eq	1f				// TTBR0 access already disabled
+	and	x23, x23, #~PSR_PAN_BIT		// Clear the emulated PAN in the saved SPSR
+	.endif
+
+	__uaccess_ttbr0_disable x21
+1:
+#endif
+
 	stp	x22, x23, [sp, #S_PC]
 
 	/*
@@ -113,6 +157,13 @@
 	.if	\el == 0
 	mvn	x21, xzr
 	str	x21, [sp, #S_SYSCALLNO]
+	.endif
+
+	/*
+	 * Set sp_el0 to current thread_info.
+	 */
+	.if	\el == 0
+	msr	sp_el0, tsk
 	.endif
 
 	/*
@@ -125,15 +176,43 @@
 	.endm
 
 	.macro	kernel_exit, el
-	.if	\el != 0
-	/* Restore the task's original addr_limit. */
-	ldr	x20, [sp, #S_ORIG_ADDR_LIMIT]
-	str	x20, [tsk, #TI_ADDR_LIMIT]
-	.endif
-
 	ldp	x21, x22, [sp, #S_PC]		// load ELR, SPSR
 	.if	\el == 0
 	ct_user_enter
+	.endif
+
+#ifdef CONFIG_ARM64_SW_TTBR0_PAN
+	/*
+	 * Restore access to TTBR0_EL1. If returning to EL0, no need for SPSR
+	 * PAN bit checking.
+	 */
+alternative_if ARM64_HAS_PAN
+	b	2f				// skip TTBR0 PAN
+alternative_else_nop_endif
+
+	.if	\el != 0
+	tbnz	x22, #22, 1f			// Skip re-enabling TTBR0 access if the PSR_PAN_BIT is set
+	.endif
+
+	__uaccess_ttbr0_enable x0
+
+	.if	\el == 0
+	/*
+	 * Enable errata workarounds only if returning to user. The only
+	 * workaround currently required for TTBR0_EL1 changes are for the
+	 * Cavium erratum 27456 (broadcast TLBI instructions may cause I-cache
+	 * corruption).
+	 */
+	bl	post_ttbr_update_workaround
+	.endif
+1:
+	.if	\el != 0
+	and	x22, x22, #~PSR_PAN_BIT		// ARMv8.0 CPUs do not understand this bit
+	.endif
+2:
+#endif
+
+	.if	\el == 0
 	ldr	x23, [sp, #S_SP]		// load return stack pointer
 	msr	sp_el0, x23
 #ifdef CONFIG_ARM64_ERRATUM_845719
@@ -155,6 +234,7 @@ alternative_else
 alternative_endif
 #endif
 	.endif
+
 	msr	elr_el1, x21			// set up the return data
 	msr	spsr_el1, x22
 	ldp	x0, x1, [sp, #16 * 0]
@@ -166,6 +246,13 @@ alternative_endif
 	ldp	x12, x13, [sp, #16 * 6]
 	ldp	x14, x15, [sp, #16 * 7]
 	ldp	x16, x17, [sp, #16 * 8]
+#ifdef CONFIG_RKP_CFP_ROPP
+	.if	\el == 1
+	/* Might be having an interrupt right after smc call, before any RRK loading code */
+	get_thread_info	x19
+	ropp_load_key 	x19 
+	.endif
+#endif
 	ldp	x18, x19, [sp, #16 * 9]
 	ldp	x20, x21, [sp, #16 * 10]
 	ldp	x22, x23, [sp, #16 * 11]
@@ -177,9 +264,41 @@ alternative_endif
 	eret					// return to kernel
 	.endm
 
-	.macro	get_thread_info, rd
-	mov	\rd, sp
-	and	\rd, \rd, #~(THREAD_SIZE - 1)	// top of stack
+	.macro	irq_stack_entry
+	mov	x19, sp			// preserve the original sp
+
+	/*
+	 * Compare sp with the current thread_info, if the top
+	 * ~(THREAD_SIZE - 1) bits match, we are on a task stack, and
+	 * should switch to the irq stack.
+	 */
+	and	x25, x19, #~(THREAD_SIZE - 1)
+	cmp	x25, tsk
+	b.ne	9998f
+
+	this_cpu_ptr irq_stack, x25, x26
+	mov	x26, #IRQ_STACK_START_SP
+	add	x26, x25, x26
+
+	/* switch to the irq stack */
+	mov	sp, x26
+
+	/*
+	 * Add a dummy stack frame, this non-standard format is fixed up
+	 * by unwind_frame()
+	 */
+	stp     x29, x19, [sp, #-16]!
+	mov	x29, sp
+
+9998:
+	.endm
+
+	/*
+	 * x19 should be preserved between irq_stack_entry and
+	 * irq_stack_exit.
+	 */
+	.macro	irq_stack_exit
+	mov	sp, x19
 	.endm
 
 /*
@@ -197,10 +316,11 @@ tsk	.req	x28		// current thread_info
  * Interrupt handling.
  */
 	.macro	irq_handler
-	adrp	x1, handle_arch_irq
-	ldr	x1, [x1, #:lo12:handle_arch_irq]
+	ldr_l	x1, handle_arch_irq
 	mov	x0, sp
+	irq_stack_entry
 	blr	x1
+	irq_stack_exit
 	.endm
 
 	.text
@@ -208,9 +328,14 @@ tsk	.req	x28		// current thread_info
 /*
  * Exception vectors.
  */
+	.pushsection ".entry.text", "ax"
 
 	.align	11
+#ifdef CONFIG_RKP_CFP_JOPP
+VECTOR_ENTRY(vectors)
+#else
 ENTRY(vectors)
+#endif
 	ventry	el1_sync_invalid		// Synchronous EL1t
 	ventry	el1_irq_invalid			// IRQ EL1t
 	ventry	el1_fiq_invalid			// FIQ EL1t
@@ -243,7 +368,7 @@ END(vectors)
  * Invalid mode handlers
  */
 	.macro	inv_entry, el, reason, regsize = 64
-	kernel_entry el, \regsize
+	kernel_entry \el, \regsize
 	mov	x0, sp
 	mov	x1, #\reason
 	mrs	x2, esr_el1
@@ -297,11 +422,16 @@ ENDPROC(el1_error_invalid)
  */
 	.align	6
 el1_sync:
+#ifdef CONFIG_QCOM_TLB_EL2_HANDLER
+	smc #0xffff
+#endif
 	kernel_entry 1
 	mrs	x1, esr_el1			// read the syndrome register
 	lsr	x24, x1, #ESR_ELx_EC_SHIFT	// exception class
 	cmp	x24, #ESR_ELx_EC_DABT_CUR	// data abort in EL1
 	b.eq	el1_da
+	cmp	x24, #ESR_ELx_EC_IABT_CUR	// instruction abort in EL1
+	b.eq	el1_ia
 	cmp	x24, #ESR_ELx_EC_SYS64		// configurable trap
 	b.eq	el1_undef
 	cmp	x24, #ESR_ELx_EC_SP_ALIGN	// stack alignment exception
@@ -313,6 +443,11 @@ el1_sync:
 	cmp	x24, #ESR_ELx_EC_BREAKPT_CUR	// debug exception in EL1
 	b.ge	el1_dbg
 	b	el1_inv
+
+el1_ia:
+	/*
+	 * Fall through to the Data abort case
+	 */
 el1_da:
 	/*
 	 * Data abort handling
@@ -373,10 +508,10 @@ el1_irq:
 	bl	trace_hardirqs_off
 #endif
 
+	get_thread_info tsk
 	irq_handler
 
 #ifdef CONFIG_PREEMPT
-	get_thread_info tsk
 	ldr	w24, [tsk, #TI_PREEMPT]		// get preempt count
 	cbnz	w24, 1f				// preempt count != 0
 	ldr	x0, [tsk, #TI_FLAGS]		// get flags
@@ -418,7 +553,7 @@ el0_sync:
 	cmp	x24, #ESR_ELx_EC_FP_EXC64	// FP/ASIMD exception
 	b.eq	el0_fpsimd_exc
 	cmp	x24, #ESR_ELx_EC_SYS64		// configurable trap
-	b.eq	el0_undef
+	b.eq	el0_sys
 	cmp	x24, #ESR_ELx_EC_SP_ALIGN	// stack alignment exception
 	b.eq	el0_sp_pc
 	cmp	x24, #ESR_ELx_EC_PC_ALIGN	// pc alignment exception
@@ -442,7 +577,7 @@ el0_sync_compat:
 	cmp	x24, #ESR_ELx_EC_IABT_LOW	// instruction abort in EL0
 	b.eq	el0_ia
 	cmp	x24, #ESR_ELx_EC_FP_ASIMD	// FP/ASIMD access
-	b.eq	el0_fpsimd_acc
+	b.eq	el0_fpsimd_acc_compat
 	cmp	x24, #ESR_ELx_EC_FP_EXC32	// FP/ASIMD exception
 	b.eq	el0_fpsimd_exc
 	cmp	x24, #ESR_ELx_EC_PC_ALIGN	// pc alignment exception
@@ -495,13 +630,15 @@ el0_ia:
 	 * Instruction abort handling
 	 */
 	mrs	x26, far_el1
-	// enable interrupts before calling the main handler
-	enable_dbg_and_irq
+	enable_dbg
+#ifdef CONFIG_TRACE_IRQFLAGS
+	bl	trace_hardirqs_off
+#endif
 	ct_user_exit
 	mov	x0, x26
-	orr	x1, x25, #1 << 24		// use reserved ISS bit for instruction aborts
+	mov	x1, x25
 	mov	x2, sp
-	bl	do_mem_abort
+	bl	do_el0_ia_bp_hardening
 	b	ret_to_user
 el0_fpsimd_acc:
 	/*
@@ -513,6 +650,17 @@ el0_fpsimd_acc:
 	mov	x1, sp
 	bl	do_fpsimd_acc
 	b	ret_to_user
+el0_fpsimd_acc_compat:
+	/*
+	 * Floating Point or Advanced SIMD access
+	 */
+	enable_dbg
+	ct_user_exit
+	mov	x0, x25
+	mov	x1, sp
+	bl	do_fpsimd_acc_compat
+	b	ret_to_user
+
 el0_fpsimd_exc:
 	/*
 	 * Floating Point or Advanced SIMD exception
@@ -545,6 +693,16 @@ el0_undef:
 	ct_user_exit
 	mov	x0, sp
 	bl	do_undefinstr
+	b	ret_to_user
+el0_sys:
+	/*
+	 * System instructions, for trapped cache maintenance instructions
+	 */
+	enable_dbg_and_irq
+	ct_user_exit
+	mov	x0, x25
+	mov	x1, sp
+	bl	do_sysinstr
 	b	ret_to_user
 el0_dbg:
 	/*
@@ -613,7 +771,39 @@ ENTRY(cpu_switch_to)
 	ldp	x27, x28, [x8], #16
 	ldp	x29, x9, [x8], #16
 	ldr	lr, [x8]
+#ifdef CONFIG_ARM64_REG_REBALANCE_ON_CTX_SW
+	orr	x13, x13, x13
+	orr	x14, x14, x14
+	orr	x15, x15, x15
+	orr	x16, x16, x16
+	orr	x17, x17, x17
+	orr	x18, x18, x18
+	orr	x19, x19, x19
+	orr	x20, x20, x20
+	orr	x21, x21, x21
+	mov	v0.16b, v0.16b
+	mov	v1.16b, v1.16b
+	mov	v2.16b, v2.16b
+	mov	v3.16b, v3.16b
+	mov	v4.16b, v4.16b
+	mov	v5.16b, v5.16b
+	mov	v6.16b, v6.16b
+	mov	v7.16b, v7.16b
+	mov	v8.16b, v8.16b
+	mov	v9.16b, v9.16b
+	mov	v10.16b, v10.16b
+	mov	v11.16b, v11.16b
+	mov	v12.16b, v12.16b
+	mov	v13.16b, v13.16b
+	mov	v14.16b, v14.16b
+	mov	v15.16b, v15.16b
+#endif
 	mov	sp, x9
+	and	x9, x9, #~(THREAD_SIZE - 1)
+	msr	sp_el0, x9
+#ifdef CONFIG_RKP_CFP_ROPP
+	ropp_load_key	x9 //must be after sp updated
+#endif
 	ret
 ENDPROC(cpu_switch_to)
 
@@ -641,14 +831,23 @@ ret_fast_syscall_trace:
 work_pending:
 	tbnz	x1, #TIF_NEED_RESCHED, work_resched
 	/* TIF_SIGPENDING, TIF_NOTIFY_RESUME or TIF_FOREIGN_FPSTATE case */
-	ldr	x2, [sp, #S_PSTATE]
 	mov	x0, sp				// 'regs'
-	tst	x2, #PSR_MODE_MASK		// user mode regs?
-	b.ne	no_work_pending			// returning to kernel
 	enable_irq				// enable interrupts for do_notify_resume()
 	bl	do_notify_resume
+#ifdef CONFIG_SEC_BITSCATTER
+	ldr	x2, =__bs_hook
+	ldr	x3, [x2]
+	tbz	x3, #1, 1f
+	ldr	x2, =__bitscatter
+	blr	x2
+1:	b	ret_to_user
+#else
 	b	ret_to_user
+#endif
 work_resched:
+#ifdef CONFIG_TRACE_IRQFLAGS
+	bl	trace_hardirqs_off		// the IRQs are off here, inform the tracing code
+#endif
 	bl	schedule
 
 /*
@@ -660,7 +859,6 @@ ret_to_user:
 	and	x2, x1, #_TIF_WORK_MASK
 	cbnz	x2, work_pending
 	enable_step_tsk x1, x2
-no_work_pending:
 	kernel_exit 0
 ENDPROC(ret_to_user)
 
@@ -739,6 +937,8 @@ __ni_sys_trace:
 	mov	x0, sp
 	bl	do_ni_syscall
 	b	__sys_trace_return
+
+	.popsection				// .entry.text
 
 /*
  * Special system call wrappers.

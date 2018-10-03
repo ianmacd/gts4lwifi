@@ -620,8 +620,14 @@ static int dm_blk_ioctl(struct block_device *bdev, fmode_t mode,
 		if (r)
 			goto out;
 	}
-
-	r =  __blkdev_driver_ioctl(tgt_bdev, mode, cmd, arg);
+	if(!strcmp(tgt->type->name , "dirty") && 
+	          (tgt->type->ioctl         ) && 
+	          (cmd == 1                 )){
+		r = tgt->type->ioctl(tgt, cmd, arg);
+	}else{
+		r =  __blkdev_driver_ioctl(tgt_bdev, mode, cmd, arg);
+	}
+	
 out:
 	dm_put_live_table(md, srcu_idx);
 	return r;
@@ -1146,7 +1152,7 @@ static void free_rq_clone(struct request *clone)
  * Must be called without clone's queue lock held,
  * see end_clone_request() for more details.
  */
-static void dm_end_request(struct request *clone, int error)
+void dm_end_request(struct request *clone, int error)
 {
 	int rw = rq_data_dir(clone);
 	struct dm_rq_target_io *tio = clone->end_io_data;
@@ -1344,7 +1350,7 @@ static void dm_complete_request(struct request *rq, int error)
  * Target's rq_end_io() function isn't called.
  * This may be used when the target's map_rq() or clone_and_map_rq() functions fail.
  */
-static void dm_kill_unmapped_request(struct request *rq, int error)
+void dm_kill_unmapped_request(struct request *rq, int error)
 {
 	rq->cmd_flags |= REQ_FAILED;
 	dm_complete_request(rq, error);
@@ -1861,6 +1867,13 @@ static void dm_dispatch_clone_request(struct request *clone, struct request *rq)
 		dm_complete_request(rq, r);
 }
 
+void dm_dispatch_request(struct request *rq)
+{
+	struct dm_rq_target_io *tio = tio_from_request(rq);
+
+	dm_dispatch_clone_request(tio->clone, rq);
+}
+
 static int dm_rq_bio_constructor(struct bio *bio, struct bio *bio_orig,
 				 void *data)
 {
@@ -2184,8 +2197,11 @@ static void dm_request_fn(struct request_queue *q)
 		tio = tio_from_request(rq);
 		/* Establish tio->ti before queuing work (map_tio_request) */
 		tio->ti = ti;
-		queue_kthread_work(&md->kworker, &tio->work);
+		spin_unlock(q->queue_lock);
+		if (map_request(tio, rq, md) == DM_MAPIO_REQUEUE)
+			dm_requeue_original_request(md, rq);
 		BUG_ON(!irqs_disabled());
+		spin_lock(q->queue_lock);
 	}
 
 	goto out;
@@ -2210,7 +2226,7 @@ static int dm_any_congested(void *congested_data, int bdi_bits)
 			 * the query about congestion status of request_queue
 			 */
 			if (dm_request_based(md))
-				r = md->queue->backing_dev_info.wb.state &
+				r = md->queue->backing_dev_info->wb.state &
 				    bdi_bits;
 			else
 				r = dm_table_any_congested(map, bdi_bits);
@@ -2292,7 +2308,7 @@ static void dm_init_md_queue(struct mapped_device *md)
 	 * - must do so here (in alloc_dev callchain) before queue is used
 	 */
 	md->queue->queuedata = md;
-	md->queue->backing_dev_info.congested_data = md;
+	md->queue->backing_dev_info->congested_data = md;
 }
 
 static void dm_init_old_md_queue(struct mapped_device *md)
@@ -2303,7 +2319,7 @@ static void dm_init_old_md_queue(struct mapped_device *md)
 	/*
 	 * Initialize aspects of queue that aren't relevant for blk-mq
 	 */
-	md->queue->backing_dev_info.congested_fn = dm_any_congested;
+	md->queue->backing_dev_info->congested_fn = dm_any_congested;
 	blk_queue_bounce_limit(md->queue, BLK_BOUNCE_ANY);
 }
 
@@ -2679,7 +2695,9 @@ static int dm_init_request_based_queue(struct mapped_device *md)
 	blk_queue_softirq_done(md->queue, dm_softirq_done);
 	blk_queue_prep_rq(md->queue, dm_prep_fn);
 
+#ifndef CONFIG_DM_NOT_USE_KDMWORKER
 	init_rq_based_worker_thread(md);
+#endif
 
 	elv_register_queue(md->queue);
 

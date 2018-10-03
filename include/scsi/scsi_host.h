@@ -534,6 +534,12 @@ enum scsi_host_state {
 	SHOST_DEL_RECOVERY,
 };
 
+struct SEC_scsi_req_logging {
+	ktime_t	start_time;
+	ktime_t pre_dispatch_time;
+	ktime_t post_dispatch_time;
+};
+
 struct Scsi_Host {
 	/*
 	 * __devices is protected by the host_lock, but you should
@@ -672,6 +678,12 @@ struct Scsi_Host {
 	unsigned short_inquiry:1;
 
 	/*
+	 * Set "DBD" field in mode_sense caching mode page in case it is
+	 * mandatory by LLD standard.
+	 */
+	unsigned set_dbd_for_caching:1;
+
+	/*
 	 * Optional work queue to be utilized by the transport
 	 */
 	char work_q_name[20];
@@ -728,12 +740,23 @@ struct Scsi_Host {
 	 */
 	void *shost_data;
 
+#ifdef CONFIG_JOURNAL_DATA_TAG
+#define JOURNAL_TAG_UNKNOWN	0
+#define JOURNAL_TAG_ON 	1
+#define JOURNAL_TAG_OFF	2
+	unsigned journal_tag; /* enable journal data tag */
+#endif
 	/*
 	 * Points to the physical bus device we'd use to do DMA
 	 * Needed just in case we have virtual hosts.
 	 */
 	struct device *dma_dev;
+#ifdef CONFIG_USB_STORAGE_DETECT
+	unsigned int  by_usb;
+#endif
+	unsigned int  by_ufs;
 
+	struct SEC_scsi_req_logging SEC_req_logging[32];
 	/*
 	 * We should ensure that this is aligned, both for better performance
 	 * and also because some compilers (m68k) don't automatically force

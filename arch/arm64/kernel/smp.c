@@ -53,9 +53,15 @@
 #include <asm/tlbflush.h>
 #include <asm/ptrace.h>
 #include <asm/virt.h>
+#include <asm/edac.h>
+#include <soc/qcom/minidump.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/ipi.h>
+
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/qcom/sec_debug.h>
+#endif
 
 /*
  * as from 2.5, kernels no longer have an init_tasks structure
@@ -70,6 +76,8 @@ enum ipi_msg_type {
 	IPI_CPU_STOP,
 	IPI_TIMER,
 	IPI_IRQ_WORK,
+	IPI_WAKEUP,
+	IPI_CPU_BACKTRACE,
 };
 
 /*
@@ -118,6 +126,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 	}
 
 	secondary_data.stack = NULL;
+	restore_pcpu_tick(cpu);
 
 	return ret;
 }
@@ -145,13 +154,13 @@ asmlinkage void secondary_start_kernel(void)
 
 	set_my_cpu_offset(per_cpu_offset(smp_processor_id()));
 
+	pr_debug("CPU%u: Booted secondary processor\n", cpu);
+
 	/*
 	 * TTBR0 is only used for the identity mapping at this stage. Make it
 	 * point to zero page to avoid speculatively fetching new entries.
 	 */
-	cpu_set_reserved_ttbr0();
-	local_flush_tlb_all();
-	cpu_set_default_tcr_t0sz();
+	cpu_uninstall_idmap();
 
 	preempt_disable();
 	trace_hardirqs_off();
@@ -174,9 +183,9 @@ asmlinkage void secondary_start_kernel(void)
 	/*
 	 * Enable GIC and timers.
 	 */
-	notify_cpu_starting(cpu);
-
 	smp_store_cpu_info(cpu);
+
+	notify_cpu_starting(cpu);
 
 	/*
 	 * OK, now it's safe to let the boot CPU continue.  Wait for
@@ -268,7 +277,7 @@ void __cpu_die(unsigned int cpu)
 		pr_crit("CPU%u: cpu didn't die\n", cpu);
 		return;
 	}
-	pr_notice("CPU%u: shutdown\n", cpu);
+	pr_debug("CPU%u: shutdown\n", cpu);
 
 	/*
 	 * Now that the dying CPU is beyond the point of no return w.r.t.
@@ -280,6 +289,8 @@ void __cpu_die(unsigned int cpu)
 	if (err)
 		pr_warn("CPU%d may not have shut down cleanly: %d\n",
 			cpu, err);
+
+	save_pcpu_tick(cpu);
 }
 
 /*
@@ -290,7 +301,7 @@ void __cpu_die(unsigned int cpu)
  * of the other hotplug-cpu capable cores, so presumably coming
  * out of idle fixes this.
  */
-void cpu_die(void)
+void __ref cpu_die(void)
 {
 	unsigned int cpu = smp_processor_id();
 
@@ -308,7 +319,16 @@ void cpu_die(void)
 	 */
 	cpu_ops[cpu]->cpu_die(cpu);
 
-	BUG();
+	/*
+	 * Do not return to the idle loop - jump back to the secondary
+	 * cpu initialisation.  There's some initialisation which needs
+	 * to be repeated to undo the effects of taking the CPU offline.
+	 */
+
+	asm volatile("mov       sp, %0\n"
+		     "mov       x29, #0\n"
+		     "b         secondary_start_kernel"
+		     : : "r" (task_stack_page(current) + THREAD_START_SP));
 }
 #endif
 
@@ -444,6 +464,17 @@ acpi_map_gic_cpu_interface(struct acpi_madt_generic_interrupt *processor)
 	/* map the logical cpu id to cpu MPIDR */
 	cpu_logical_map(cpu_count) = hwid;
 
+	/*
+	 * Set-up the ACPI parking protocol cpu entries
+	 * while initializing the cpu_logical_map to
+	 * avoid parsing MADT entries multiple times for
+	 * nothing (ie a valid cpu_logical_map entry should
+	 * contain a valid parking protocol data set to
+	 * initialize the cpu if the parking protocol is
+	 * the only available enable method).
+	 */
+	acpi_set_mailbox_entry(cpu_count, processor);
+
 	cpu_count++;
 }
 
@@ -466,6 +497,18 @@ acpi_parse_gic_cpu_interface(struct acpi_subtable_header *header,
 #else
 #define acpi_table_parse_madt(...)	do { } while (0)
 #endif
+void (*__smp_cross_call)(const struct cpumask *, unsigned int);
+DEFINE_PER_CPU(bool, pending_ipi);
+
+void smp_cross_call_common(const struct cpumask *cpumask, unsigned int func)
+{
+	unsigned int cpu;
+
+	for_each_cpu(cpu, cpumask)
+		per_cpu(pending_ipi, cpu) = true;
+
+	__smp_cross_call(cpumask, func);
+}
 
 /*
  * Enumerate the possible CPU set from the device tree and build the
@@ -612,8 +655,6 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	}
 }
 
-void (*__smp_cross_call)(const struct cpumask *, unsigned int);
-
 void __init set_smp_cross_call(void (*fn)(const struct cpumask *, unsigned int))
 {
 	__smp_cross_call = fn;
@@ -626,10 +667,17 @@ static const char *ipi_types[NR_IPI] __tracepoint_string = {
 	S(IPI_CPU_STOP, "CPU stop interrupts"),
 	S(IPI_TIMER, "Timer broadcast interrupts"),
 	S(IPI_IRQ_WORK, "IRQ work interrupts"),
+	S(IPI_WAKEUP, "CPU wakeup interrupts"),
+	S(IPI_CPU_BACKTRACE, "CPU backtrace"),
 };
 
 static void smp_cross_call(const struct cpumask *target, unsigned int ipinr)
 {
+	unsigned int cpu;
+
+	for_each_cpu(cpu, target)
+		per_cpu(pending_ipi, cpu) = true;
+
 	trace_ipi_raise(target, ipi_types[ipinr]);
 	__smp_cross_call(target, ipinr);
 }
@@ -661,13 +709,20 @@ u64 smp_irq_stat_cpu(unsigned int cpu)
 
 void arch_send_call_function_ipi_mask(const struct cpumask *mask)
 {
-	smp_cross_call(mask, IPI_CALL_FUNC);
+	smp_cross_call_common(mask, IPI_CALL_FUNC);
 }
 
 void arch_send_call_function_single_ipi(int cpu)
 {
-	smp_cross_call(cpumask_of(cpu), IPI_CALL_FUNC);
+	smp_cross_call_common(cpumask_of(cpu), IPI_CALL_FUNC);
 }
+
+#ifdef CONFIG_ARM64_ACPI_PARKING_PROTOCOL
+void arch_send_wakeup_ipi_mask(const struct cpumask *mask)
+{
+	smp_cross_call(mask, IPI_WAKEUP);
+}
+#endif
 
 #ifdef CONFIG_IRQ_WORK
 void arch_irq_work_raise(void)
@@ -679,26 +734,102 @@ void arch_irq_work_raise(void)
 
 static DEFINE_RAW_SPINLOCK(stop_lock);
 
+DEFINE_PER_CPU(struct pt_regs, regs_before_stop);
+
 /*
  * ipi_cpu_stop - handle IPI from smp_send_stop()
  */
-static void ipi_cpu_stop(unsigned int cpu)
+static void ipi_cpu_stop(unsigned int cpu, struct pt_regs *regs)
 {
 	if (system_state == SYSTEM_BOOTING ||
 	    system_state == SYSTEM_RUNNING) {
+		per_cpu(regs_before_stop, cpu) = *regs;
 		raw_spin_lock(&stop_lock);
 		pr_crit("CPU%u: stopping\n", cpu);
+		show_regs(regs);
 		dump_stack();
+		dump_stack_minidump(regs->sp);
+		arm64_check_cache_ecc(NULL);
+#ifdef CONFIG_SEC_DEBUG
+		sec_debug_save_context();
+#endif
 		raw_spin_unlock(&stop_lock);
 	}
 
-	set_cpu_online(cpu, false);
+	set_cpu_active(cpu, false);
 
+	flush_cache_all();
 	local_irq_disable();
 
 	while (1)
 		cpu_relax();
 }
+
+static cpumask_t backtrace_mask;
+static DEFINE_RAW_SPINLOCK(backtrace_lock);
+
+/* "in progress" flag of arch_trigger_all_cpu_backtrace */
+static unsigned long backtrace_flag;
+
+static void smp_send_all_cpu_backtrace(void)
+{
+	unsigned int this_cpu = smp_processor_id();
+	int i;
+
+	if (test_and_set_bit(0, &backtrace_flag))
+		/*
+		 * If there is already a trigger_all_cpu_backtrace() in progress
+		 * (backtrace_flag == 1), don't output double cpu dump infos.
+		 */
+		return;
+
+	cpumask_copy(&backtrace_mask, cpu_online_mask);
+	cpumask_clear_cpu(this_cpu, &backtrace_mask);
+
+	pr_info("Backtrace for cpu %d (current):\n", this_cpu);
+	dump_stack();
+
+	pr_info("\nsending IPI to all other CPUs:\n");
+	if (!cpumask_empty(&backtrace_mask))
+		smp_cross_call_common(&backtrace_mask, IPI_CPU_BACKTRACE);
+
+	/* Wait for up to 10 seconds for all other CPUs to do the backtrace */
+	for (i = 0; i < 10 * 1000; i++) {
+		if (cpumask_empty(&backtrace_mask))
+			break;
+		mdelay(1);
+	}
+
+	clear_bit(0, &backtrace_flag);
+	smp_mb__after_atomic();
+}
+
+/*
+ * ipi_cpu_backtrace - handle IPI from smp_send_all_cpu_backtrace()
+ */
+static void ipi_cpu_backtrace(unsigned int cpu, struct pt_regs *regs)
+{
+	if (cpumask_test_cpu(cpu, &backtrace_mask)) {
+		raw_spin_lock(&backtrace_lock);
+		pr_warn("IPI backtrace for cpu %d\n", cpu);
+		show_regs(regs);
+		raw_spin_unlock(&backtrace_lock);
+		cpumask_clear_cpu(cpu, &backtrace_mask);
+	}
+}
+
+#ifdef CONFIG_SMP
+void arch_trigger_all_cpu_backtrace(void)
+{
+	smp_send_all_cpu_backtrace();
+}
+#else
+void arch_trigger_all_cpu_backtrace(void)
+{
+	dump_stack();
+}
+#endif
+
 
 /*
  * Main handler for inter-processor interrupts
@@ -726,7 +857,7 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 
 	case IPI_CPU_STOP:
 		irq_enter();
-		ipi_cpu_stop(cpu);
+		ipi_cpu_stop(cpu, regs);
 		irq_exit();
 		break;
 
@@ -746,6 +877,18 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 		break;
 #endif
 
+	case IPI_CPU_BACKTRACE:
+		ipi_cpu_backtrace(cpu, regs);
+		break;
+
+#ifdef CONFIG_ARM64_ACPI_PARKING_PROTOCOL
+	case IPI_WAKEUP:
+		WARN_ONCE(!acpi_parking_protocol_valid(cpu),
+			  "CPU%u: Wake-up IPI outside the ACPI parking protocol\n",
+			  cpu);
+		break;
+#endif
+
 	default:
 		pr_crit("CPU%u: Unknown IPI message 0x%x\n", cpu, ipinr);
 		break;
@@ -753,18 +896,21 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 
 	if ((unsigned)ipinr < NR_IPI)
 		trace_ipi_exit_rcuidle(ipi_types[ipinr]);
+
+	per_cpu(pending_ipi, cpu) = false;
 	set_irq_regs(old_regs);
 }
 
 void smp_send_reschedule(int cpu)
 {
-	smp_cross_call(cpumask_of(cpu), IPI_RESCHEDULE);
+	BUG_ON(cpu_is_offline(cpu));
+	smp_cross_call_common(cpumask_of(cpu), IPI_RESCHEDULE);
 }
 
 #ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
 void tick_broadcast(const struct cpumask *mask)
 {
-	smp_cross_call(mask, IPI_TIMER);
+	smp_cross_call_common(mask, IPI_TIMER);
 }
 #endif
 
@@ -778,15 +924,15 @@ void smp_send_stop(void)
 		cpumask_copy(&mask, cpu_online_mask);
 		cpumask_clear_cpu(smp_processor_id(), &mask);
 
-		smp_cross_call(&mask, IPI_CPU_STOP);
+		smp_cross_call_common(&mask, IPI_CPU_STOP);
 	}
 
 	/* Wait up to one second for other CPUs to stop */
 	timeout = USEC_PER_SEC;
-	while (num_online_cpus() > 1 && timeout--)
+	while (num_active_cpus() > 1 && timeout--)
 		udelay(1);
 
-	if (num_online_cpus() > 1)
+	if (num_active_cpus() > 1)
 		pr_warning("SMP: failed to stop secondary CPUs\n");
 }
 

@@ -90,7 +90,7 @@ static inline int __down_read_trylock(struct rw_semaphore *sem)
 /*
  * lock for writing
  */
-static inline void __down_write_nested(struct rw_semaphore *sem, int subclass)
+static inline void __down_write(struct rw_semaphore *sem)
 {
 	signed long old, new, tmp;
 
@@ -106,11 +106,6 @@ static inline void __down_write_nested(struct rw_semaphore *sem, int subclass)
 		: "cc", "memory");
 	if (old != 0)
 		rwsem_down_write_failed(sem);
-}
-
-static inline void __down_write(struct rw_semaphore *sem)
-{
-	__down_write_nested(sem, 0);
 }
 
 /*
@@ -195,43 +190,6 @@ static inline void __downgrade_write(struct rw_semaphore *sem)
 		: "cc", "memory");
 	if (new > 1)
 		rwsem_downgrade_wake(sem);
-}
-
-/*
- * implement atomic add functionality
- */
-static inline void rwsem_atomic_add(long delta, struct rw_semaphore *sem)
-{
-	signed long old, new;
-
-	asm volatile(
-		"	lg	%0,%2\n"
-		"0:	lgr	%1,%0\n"
-		"	agr	%1,%4\n"
-		"	csg	%0,%1,%2\n"
-		"	jl	0b"
-		: "=&d" (old), "=&d" (new), "=Q" (sem->count)
-		: "Q" (sem->count), "d" (delta)
-		: "cc", "memory");
-}
-
-/*
- * implement exchange and add functionality
- */
-static inline long rwsem_atomic_update(long delta, struct rw_semaphore *sem)
-{
-	signed long old, new;
-
-	asm volatile(
-		"	lg	%0,%2\n"
-		"0:	lgr	%1,%0\n"
-		"	agr	%1,%4\n"
-		"	csg	%0,%1,%2\n"
-		"	jl	0b"
-		: "=&d" (old), "=&d" (new), "=Q" (sem->count)
-		: "Q" (sem->count), "d" (delta)
-		: "cc", "memory");
-	return new;
 }
 
 #endif /* _S390_RWSEM_H */
