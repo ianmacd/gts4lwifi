@@ -19,7 +19,7 @@
 #ifndef __BQ25898S_CHARGER_H
 #define __BQ25898S_CHARGER_H __FILE__
 
-#include "include/sec_charging_common.h"
+#include "../sec_charging_common.h"
 
 #define BQ25898S_CHG_REG_00			0x00
 #define BQ25898S_CHG_ENABLE_HIZ_MODE_SHIFT	7

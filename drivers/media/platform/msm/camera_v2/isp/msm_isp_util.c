@@ -22,6 +22,7 @@
 #include "cam_smmu_api.h"
 #include "msm_isp48.h"
 #define CREATE_TRACE_POINTS
+#include "msm_isp.h"
 #include "trace/events/msm_cam.h"
 
 DEFINE_SPINLOCK(common_dev_irq_dump_lock);

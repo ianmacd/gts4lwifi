@@ -18,7 +18,7 @@
 #ifndef __SEC_MULTI_PORT_CHARGER_H
 #define __SEC_MULTI_PORT_CHARGER_H __FILE__
 
-#include "include/sec_battery.h"
+#include "sec_battery.h"
 #include "sec_charging_common.h"
 
 #define SEC_MAIN_CHARGER_CONDITION_NONE			0x00
