@@ -707,12 +707,10 @@ struct r8152 {
 	struct delayed_work schedule, hw_phy_work;
 	struct mii_if_info mii;
 	struct mutex control;	/* use for hw setting */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 0)
-	struct vlan_group *vlgrp;
+#ifdef CONFIG_PM_SLEEP
+	struct notifier_block pm_notifier;
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 22)
-	struct net_device_stats stats;
-#endif
+
 	struct rtl_ops {
 		void (*init)(struct r8152 *);
 		int (*enable)(struct r8152 *);
@@ -5589,7 +5587,7 @@ static inline void __rtl_work_func(struct r8152 *tp)
 	if (test_and_clear_bit(RTL8152_LINK_CHG, &tp->flags))
 		set_carrier(tp);
 
-	if (test_bit(RTL8152_SET_RX_MODE, &tp->flags))
+	if (test_and_clear_bit(RTL8152_SET_RX_MODE, &tp->flags))
 		_rtl8152_set_rx_mode(tp->netdev);
 
 	/* don't schedule napi before linking */
@@ -5622,24 +5620,6 @@ static inline void __rtl_hw_phy_work_func(struct r8152 *tp)
 	usb_autopm_put_interface(tp->intf);
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 20)
-
-static void rtl_work_func_t(void *data)
-{
-	struct r8152 *tp = (struct r8152 *)data;
-
-	__rtl_work_func(tp);
-}
-
-static void rtl_hw_phy_work_func_t(void *data)
-{
-	struct r8152 *tp = (struct r8152 *)data;
-
-	__rtl_hw_phy_work_func(tp);
-}
-
-#else
-
 static void rtl_work_func_t(struct work_struct *work)
 {
 	struct r8152 *tp = container_of(work, struct r8152, schedule.work);
@@ -5653,8 +5633,6 @@ static void rtl_hw_phy_work_func_t(struct work_struct *work)
 
 	__rtl_hw_phy_work_func(tp);
 }
-
-#endif
 
 static int rtk_disable_diag(struct r8152 *tp)
 {
@@ -5772,18 +5750,6 @@ static void r8152b_init(struct r8152 *tp)
 
 	if (test_bit(RTL8152_UNPLUG, &tp->flags))
 		return;
-
-#if 0
-	/* Clear EP3 Fifo before using interrupt transfer */
-	if (ocp_read_byte(tp, MCU_TYPE_USB, 0xb963) & 0x80) {
-		ocp_write_byte(tp, MCU_TYPE_USB, 0xb963, 0x08);
-		ocp_write_byte(tp, MCU_TYPE_USB, 0xb963, 0x40);
-		ocp_write_byte(tp, MCU_TYPE_USB, 0xb963, 0x00);
-		ocp_write_byte(tp, MCU_TYPE_USB, 0xb968, 0x00);
-		ocp_write_word(tp, MCU_TYPE_USB, 0xb010, 0x00e0);
-		ocp_write_byte(tp, MCU_TYPE_USB, 0xb963, 0x04);
-	}
-#endif
 
 	data = r8152_mdio_read(tp, MII_BMCR);
 	if (data & BMCR_PDOWN) {
