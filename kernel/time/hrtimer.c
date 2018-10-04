@@ -315,7 +315,7 @@ EXPORT_SYMBOL_GPL(__ktime_divns);
  */
 ktime_t ktime_add_safe(const ktime_t lhs, const ktime_t rhs)
 {
-	ktime_t res = ktime_add(lhs, rhs);
+	ktime_t res = ktime_add_unsafe(lhs, rhs);
 
 	/*
 	 * We use KTIME_SEC_MAX here, the maximum timeout which we can
@@ -1597,6 +1597,7 @@ static void init_hrtimers_cpu(int cpu)
 		cpu_base->clock_base[i].cpu_base = cpu_base;
 		timerqueue_init_head(&cpu_base->clock_base[i].active);
 	}
+
 	cpu_base->active_bases = 0;
 	cpu_base->cpu = cpu;
 	hrtimer_init_hres(cpu_base);
