@@ -98,24 +98,21 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 			break;
 
 		pud = pud_offset(pgd, addr);
-		printk(", *pud=%016llx", pud_val(*pud));
-		sec_debug_store_pte((unsigned long)pud_val(*pud), 3);
+		pr_cont(", *pud=%016llx", pud_val(*pud));
 		if (pud_none(*pud) || pud_bad(*pud))
 			break;
 
 		pmd = pmd_offset(pud, addr);
-		printk(", *pmd=%016llx", pmd_val(*pmd));
-		sec_debug_store_pte((unsigned long)pmd_val(*pmd), 4);
+		pr_cont(", *pmd=%016llx", pmd_val(*pmd));
 		if (pmd_none(*pmd) || pmd_bad(*pmd))
 			break;
 
 		pte = pte_offset_map(pmd, addr);
-		printk(", *pte=%016llx", pte_val(*pte));
-		sec_debug_store_pte((unsigned long)pte_val(*pte), 5);
+		pr_cont(", *pte=%016llx", pte_val(*pte));
 		pte_unmap(pte);
 	} while(0);
 
-	printk("\n");
+	pr_cont("\n");
 }
 
 #ifdef CONFIG_ARM64_HW_AFDBM

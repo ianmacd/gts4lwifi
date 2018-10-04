@@ -1370,12 +1370,11 @@ emsgsize:
 	 */
 
 	cork->length += length;
-	if ((skb && skb_is_gso(skb)) ||
-	    (((length + fragheaderlen) > mtu) &&
-	    (skb_queue_len(&sk->sk_write_queue) <= 1) &&
+	if ((((length + fragheaderlen) > mtu) ||
+	     (skb && skb_is_gso(skb))) &&
 	    (sk->sk_protocol == IPPROTO_UDP) &&
 	    (rt->dst.dev->features & NETIF_F_UFO) &&
-	    (sk->sk_type == SOCK_DGRAM) && !udp_get_no_check6_tx(sk))) {
+	    (sk->sk_type == SOCK_DGRAM) && !udp_get_no_check6_tx(sk)) {
 		err = ip6_ufo_append_data(sk, queue, getfrag, from, length,
 					  hh_len, fragheaderlen, exthdrlen,
 					  transhdrlen, mtu, flags, fl6);
