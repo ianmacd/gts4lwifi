@@ -1010,7 +1010,7 @@ static int usbhid_parse(struct hid_device *hid)
 	char *rdesc;
 	int ret, n;
 	int num_descriptors;
-	size_t offset = offsetof(struct hid_descriptor, desc); 
+	size_t offset = offsetof(struct hid_descriptor, desc);
 
 	quirks = usbhid_lookup_quirk(le16_to_cpu(dev->descriptor.idVendor),
 			le16_to_cpu(dev->descriptor.idProduct));
@@ -1042,7 +1042,7 @@ static int usbhid_parse(struct hid_device *hid)
 	hid->country = hdesc->bCountryCode;
 
 	num_descriptors = min_t(int, hdesc->bNumDescriptors,
-		(hdesc->bLength - offset) / sizeof(struct hid_class_descriptor));
+	       (hdesc->bLength - offset) / sizeof(struct hid_class_descriptor));
 
 	for (n = 0; n < num_descriptors; n++)
 		if (hdesc->desc[n].bDescriptorType == HID_DT_REPORT)
