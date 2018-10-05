@@ -31,18 +31,11 @@
 #include <trace/events/kmem.h>
 #include <soc/qcom/secure_buffer.h>
 
-static gfp_t high_order_gfp_flags = (GFP_HIGHUSER | __GFP_NOWARN |
-				     __GFP_NORETRY)
-				     & ~__GFP_RECLAIM;
-static gfp_t low_order_gfp_flags  = (GFP_HIGHUSER | __GFP_NOWARN);
-
-#ifndef CONFIG_ALLOC_BUFFERS_IN_4K_CHUNKS
-static const unsigned int orders[] = {9, 8, 4, 0};
-#else
-static const unsigned int orders[] = {0};
-#endif
-
+static gfp_t high_order_gfp_flags = (GFP_HIGHUSER | __GFP_ZERO | __GFP_NOWARN |
+				     __GFP_NORETRY) & ~__GFP_RECLAIM;
+static gfp_t low_order_gfp_flags  = (GFP_HIGHUSER | __GFP_ZERO | __GFP_NOWARN);
 static struct ion_system_heap *system_heap;
+static const unsigned int orders[] = {8, 4, 0};
 static const int num_orders = ARRAY_SIZE(orders);
 static int order_to_index(unsigned int order)
 {
