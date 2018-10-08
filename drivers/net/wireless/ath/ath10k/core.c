@@ -67,27 +67,6 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 			.board_size = QCA988X_BOARD_DATA_SZ,
 			.board_ext_size = QCA988X_BOARD_EXT_DATA_SZ,
 		},
-		.hw_ops = &qca988x_ops,
-		.decap_align_bytes = 4,
-	},
-	{
-		.id = QCA9887_HW_1_0_VERSION,
-		.dev_id = QCA9887_1_0_DEVICE_ID,
-		.name = "qca9887 hw1.0",
-		.patch_load_addr = QCA9887_HW_1_0_PATCH_LOAD_ADDR,
-		.uart_pin = 7,
-		.cc_wraparound_type = ATH10K_HW_CC_WRAP_SHIFTED_ALL,
-		.otp_exe_param = 0,
-		.channel_counters_freq_hz = 88000,
-		.max_probe_resp_desc_thres = 0,
-		.cal_data_len = 2116,
-		.fw = {
-			.dir = QCA9887_HW_1_0_FW_DIR,
-			.board = QCA9887_HW_1_0_BOARD_DATA_FILE,
-			.board_size = QCA9887_BOARD_DATA_SZ,
-			.board_ext_size = QCA9887_BOARD_EXT_DATA_SZ,
-		},
-		.hw_ops = &qca988x_ops,
 		.decap_align_bytes = 4,
 	},
 	{
@@ -106,7 +85,6 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 			.board_size = QCA6174_BOARD_DATA_SZ,
 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
 		},
-		.hw_ops = &qca988x_ops,
 		.decap_align_bytes = 4,
 	},
 	{
@@ -125,7 +103,6 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 			.board_size = QCA6174_BOARD_DATA_SZ,
 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
 		},
-		.hw_ops = &qca988x_ops,
 		.decap_align_bytes = 4,
 	},
 	{
@@ -144,7 +121,6 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 			.board_size = QCA6174_BOARD_DATA_SZ,
 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
 		},
-		.hw_ops = &qca988x_ops,
 		.decap_align_bytes = 4,
 	},
 	{
@@ -164,7 +140,6 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 			.board_size = QCA6174_BOARD_DATA_SZ,
 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
 		},
-		.hw_ops = &qca988x_ops,
 		.decap_align_bytes = 4,
 	},
 	{
@@ -188,57 +163,6 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 			.board_size = QCA99X0_BOARD_DATA_SZ,
 			.board_ext_size = QCA99X0_BOARD_EXT_DATA_SZ,
 		},
-		.sw_decrypt_mcast_mgmt = true,
-		.hw_ops = &qca99x0_ops,
-		.decap_align_bytes = 1,
-	},
-	{
-		.id = QCA9984_HW_1_0_DEV_VERSION,
-		.dev_id = QCA9984_1_0_DEVICE_ID,
-		.name = "qca9984/qca9994 hw1.0",
-		.patch_load_addr = QCA9984_HW_1_0_PATCH_LOAD_ADDR,
-		.uart_pin = 7,
-		.otp_exe_param = 0x00000700,
-		.continuous_frag_desc = true,
-		.cck_rate_map_rev2 = true,
-		.channel_counters_freq_hz = 150000,
-		.max_probe_resp_desc_thres = 24,
-		.tx_chain_mask = 0xf,
-		.rx_chain_mask = 0xf,
-		.max_spatial_stream = 4,
-		.cal_data_len = 12064,
-		.fw = {
-			.dir = QCA9984_HW_1_0_FW_DIR,
-			.board = QCA9984_HW_1_0_BOARD_DATA_FILE,
-			.board_size = QCA99X0_BOARD_DATA_SZ,
-			.board_ext_size = QCA99X0_BOARD_EXT_DATA_SZ,
-		},
-		.sw_decrypt_mcast_mgmt = true,
-		.hw_ops = &qca99x0_ops,
-		.decap_align_bytes = 1,
-	},
-	{
-		.id = QCA9888_HW_2_0_DEV_VERSION,
-		.dev_id = QCA9888_2_0_DEVICE_ID,
-		.name = "qca9888 hw2.0",
-		.patch_load_addr = QCA9888_HW_2_0_PATCH_LOAD_ADDR,
-		.uart_pin = 7,
-		.otp_exe_param = 0x00000700,
-		.continuous_frag_desc = true,
-		.channel_counters_freq_hz = 150000,
-		.max_probe_resp_desc_thres = 24,
-		.tx_chain_mask = 3,
-		.rx_chain_mask = 3,
-		.max_spatial_stream = 2,
-		.cal_data_len = 12064,
-		.fw = {
-			.dir = QCA9888_HW_2_0_FW_DIR,
-			.board = QCA9888_HW_2_0_BOARD_DATA_FILE,
-			.board_size = QCA99X0_BOARD_DATA_SZ,
-			.board_ext_size = QCA99X0_BOARD_EXT_DATA_SZ,
-		},
-		.sw_decrypt_mcast_mgmt = true,
-		.hw_ops = &qca99x0_ops,
 		.decap_align_bytes = 1,
 	},
 	{
@@ -257,7 +181,6 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 			.board_size = QCA9377_BOARD_DATA_SZ,
 			.board_ext_size = QCA9377_BOARD_EXT_DATA_SZ,
 		},
-		.hw_ops = &qca988x_ops,
 		.decap_align_bytes = 4,
 	},
 	{
@@ -276,49 +199,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 			.board_size = QCA9377_BOARD_DATA_SZ,
 			.board_ext_size = QCA9377_BOARD_EXT_DATA_SZ,
 		},
-		.hw_ops = &qca988x_ops,
 		.decap_align_bytes = 4,
-	},
-	{
-		.id = QCA4019_HW_1_0_DEV_VERSION,
-		.dev_id = 0,
-		.name = "qca4019 hw1.0",
-		.patch_load_addr = QCA4019_HW_1_0_PATCH_LOAD_ADDR,
-		.uart_pin = 7,
-		.cc_wraparound_type = ATH10K_HW_CC_WRAP_SHIFTED_EACH,
-		.otp_exe_param = 0x0010000,
-		.continuous_frag_desc = true,
-		.cck_rate_map_rev2 = true,
-		.channel_counters_freq_hz = 125000,
-		.max_probe_resp_desc_thres = 24,
-		.tx_chain_mask = 0x3,
-		.rx_chain_mask = 0x3,
-		.max_spatial_stream = 2,
-		.cal_data_len = 12064,
-		.fw = {
-			.dir = QCA4019_HW_1_0_FW_DIR,
-			.board = QCA4019_HW_1_0_BOARD_DATA_FILE,
-			.board_size = QCA4019_BOARD_DATA_SZ,
-			.board_ext_size = QCA4019_BOARD_EXT_DATA_SZ,
-		},
-		.sw_decrypt_mcast_mgmt = true,
-		.hw_ops = &qca99x0_ops,
-		.decap_align_bytes = 1,
-	},
-	{
-		.id = ATH10K_HW_WCN3990,
-		.dev_id = 0,
-		.name = "wcn3990 hw1.0",
-		.continuous_frag_desc = true,
-		.tx_chain_mask = 0x7,
-		.rx_chain_mask = 0x7,
-		.max_spatial_stream = 4,
-		.fw = {
-			.dir = WCN3990_HW_1_0_FW_DIR,
-		},
-		.sw_decrypt_mcast_mgmt = true,
-		.hw_ops = &wcn3990_ops,
-		.decap_align_bytes = 1,
 	},
 };
 
@@ -706,8 +587,11 @@ static int ath10k_core_get_board_id_from_otp(struct ath10k *ar)
 		   "boot get otp board id result 0x%08x board_id %d chip_id %d\n",
 		   result, board_id, chip_id);
 
-	if ((result & ATH10K_BMI_BOARD_ID_STATUS_MASK) != 0)
+	if ((result & ATH10K_BMI_BOARD_ID_STATUS_MASK) != 0 ||
+	    (board_id == 0)) {
+		ath10k_warn(ar, "board id is not exist in otp, ignore it\n");
 		return -EOPNOTSUPP;
+	}
 
 	ar->id.bmi_ids_valid = true;
 	ar->id.bmi_board_id = board_id;
@@ -1993,28 +1877,6 @@ int ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 	if (status) {
 		ath10k_err(ar, "wmi unified ready event not received\n");
 		goto err_hif_stop;
-	}
-
-	/* Some firmware revisions do not properly set up hardware rx filter
-	 * registers.
-	 *
-	 * A known example from QCA9880 and 10.2.4 is that MAC_PCU_ADDR1_MASK
-	 * is filled with 0s instead of 1s allowing HW to respond with ACKs to
-	 * any frames that matches MAC_PCU_RX_FILTER which is also
-	 * misconfigured to accept anything.
-	 *
-	 * The ADDR1 is programmed using internal firmware structure field and
-	 * can't be (easily/sanely) reached from the driver explicitly. It is
-	 * possible to implicitly make it correct by creating a dummy vdev and
-	 * then deleting it.
-	 */
-	if (!QCA_REV_WCN3990(ar)) {
-		status = ath10k_core_reset_rx_filter(ar);
-		if (status) {
-			ath10k_err(ar, "failed to reset rx filter: %d\n",
-				   status);
-			goto err_hif_stop;
-		}
 	}
 
 	status = ath10k_htt_rx_ring_refill(ar);

@@ -109,22 +109,8 @@ void __reset_page_owner(struct page *page, unsigned int order)
 static inline bool check_recursive_alloc(struct stack_trace *trace,
 					unsigned long ip)
 {
-	int i, count;
+	struct page_ext *page_ext = lookup_page_ext(page);
 
-	if (!trace->nr_entries)
-		return false;
-
-	for (i = 0, count = 0; i < trace->nr_entries; i++) {
-		if (trace->entries[i] == ip && ++count == 2)
-			return true;
-	}
-
-	return false;
-}
-
-static noinline depot_stack_handle_t save_stack(gfp_t flags)
-{
-	unsigned long entries[PAGE_OWNER_STACK_DEPTH];
 	struct stack_trace trace = {
 		.nr_entries = 0,
 		.entries = entries,
@@ -132,6 +118,9 @@ static noinline depot_stack_handle_t save_stack(gfp_t flags)
 		.skip = 0
 	};
 	depot_stack_handle_t handle;
+
+	if (unlikely(!page_ext))
+		return;
 
 	save_stack_trace(&trace);
 	if (trace.nr_entries != 0 &&
@@ -175,7 +164,11 @@ void __set_page_owner_migrate_reason(struct page *page, int reason)
 {
 	struct page_ext *page_ext = lookup_page_ext(page);
 	if (unlikely(!page_ext))
-		return;
+		/*
+		 * The caller just returns 0 if no valid gfp
+		 * So return 0 here too.
+		 */
+		return 0;
 
 	page_ext->last_migrate_reason = reason;
 }
