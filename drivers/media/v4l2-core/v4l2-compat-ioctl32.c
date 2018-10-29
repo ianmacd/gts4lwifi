@@ -384,67 +384,62 @@ struct v4l2_buffer32 {
 	__u32			reserved;
 };
 
-static int get_v4l2_plane32(struct v4l2_plane __user *up,
-			    struct v4l2_plane32 __user *up32,
-			    enum v4l2_memory memory)
+static int get_v4l2_plane32(struct v4l2_plane __user *up, struct v4l2_plane32 __user *up32,
+				enum v4l2_memory memory)
 {
-	compat_ulong_t p;
+	compat_long_t p;
 
 	if (copy_in_user(up, up32, 2 * sizeof(__u32)) ||
-	    copy_in_user(&up->data_offset, &up32->data_offset,
-			 sizeof(up->data_offset)))
+		copy_in_user(&up->data_offset, &up32->data_offset,
+				sizeof(__u32)) ||
+		copy_in_user(up->reserved, up32->reserved,
+				sizeof(up->reserved)) ||
+		copy_in_user(&up->length, &up32->length,
+				sizeof(__u32)))
 		return -EFAULT;
 
-	switch (memory) {
-	case V4L2_MEMORY_MMAP:
-	case V4L2_MEMORY_OVERLAY:
-		if (copy_in_user(&up->m.mem_offset, &up32->m.mem_offset,
-				 sizeof(up32->m.mem_offset)))
-			return -EFAULT;
-		break;
-	case V4L2_MEMORY_USERPTR:
+	if (memory == V4L2_MEMORY_USERPTR) {
 		if (get_user(p, &up32->m.userptr) ||
-		    put_user((unsigned long)compat_ptr(p), &up->m.userptr))
+			put_user((unsigned long) compat_ptr(p),
+				&up->m.userptr))
 			return -EFAULT;
-		break;
-	case V4L2_MEMORY_DMABUF:
-		if (copy_in_user(&up->m.fd, &up32->m.fd, sizeof(up32->m.fd)))
+	} else if (memory == V4L2_MEMORY_DMABUF) {
+		if (copy_in_user(&up->m.fd, &up32->m.fd, sizeof(int)))
 			return -EFAULT;
-		break;
+	} else {
+		if (copy_in_user(&up->m.mem_offset, &up32->m.mem_offset,
+					sizeof(__u32)))
+			return -EFAULT;
 	}
 
 	return 0;
 }
 
-static int put_v4l2_plane32(struct v4l2_plane __user *up,
-			    struct v4l2_plane32 __user *up32,
-			    enum v4l2_memory memory)
+static int put_v4l2_plane32(struct v4l2_plane __user *up, struct v4l2_plane32 __user *up32,
+				enum v4l2_memory memory)
 {
-	unsigned long p;
-
 	if (copy_in_user(up32, up, 2 * sizeof(__u32)) ||
-	    copy_in_user(&up32->data_offset, &up->data_offset,
-			 sizeof(up->data_offset)))
+		copy_in_user(up32->reserved, up->reserved,
+				sizeof(up32->reserved)) ||
+		copy_in_user(&up32->data_offset, &up->data_offset,
+				sizeof(__u32)))
 		return -EFAULT;
 
-	switch (memory) {
-	case V4L2_MEMORY_MMAP:
-	case V4L2_MEMORY_OVERLAY:
+	/* For MMAP, driver might've set up the offset, so copy it back.
+	 * USERPTR stays the same (was userspace-provided), so no copying. */
+	if (memory == V4L2_MEMORY_MMAP)
 		if (copy_in_user(&up32->m.mem_offset, &up->m.mem_offset,
-				 sizeof(up->m.mem_offset)))
+					sizeof(__u32)))
 			return -EFAULT;
-		break;
-	case V4L2_MEMORY_USERPTR:
-		if (get_user(p, &up->m.userptr) ||
-		    put_user((compat_ulong_t)ptr_to_compat((__force void *)p),
-			     &up32->m.userptr))
+	/* For DMABUF, driver might've set up the fd, so copy it back. */
+	if (memory == V4L2_MEMORY_DMABUF)
+		if (copy_in_user(&up32->m.fd, &up->m.fd,
+					sizeof(int)))
 			return -EFAULT;
-		break;
-	case V4L2_MEMORY_DMABUF:
-		if (copy_in_user(&up32->m.fd, &up->m.fd, sizeof(up->m.fd)))
+	if (memory == V4L2_MEMORY_USERPTR)
+		if (copy_in_user(&up32->m.userptr, &up->m.userptr,
+					sizeof(compat_long_t)))
 			return -EFAULT;
-		break;
-	}
 
 	return 0;
 }
