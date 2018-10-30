@@ -29,6 +29,7 @@
 #include <linux/sec_sysfs.h>
 #include <linux/sec_class.h>
 #include <linux/muic/s2mu004-muic-sysfs.h>
+#include <linux/sec_param.h>
 
 static ssize_t s2mu004_muic_show_uart_en(struct device *dev,
 	struct device_attribute *attr, char *buf)
@@ -518,8 +519,15 @@ static ssize_t s2mu004_muic_set_afc_disable(struct device *dev,
 		return ret;
 	}
 #else
-	pr_err("%s:set_param is NOT supported! - %02x:%02x(%d)\n",
-		__func__, param_val, curr_val, ret);
+	pr_info("%s: param_val:%d\n",__func__,param_val);
+	ret = sec_set_param(param_index_afc_disable, &param_val);
+
+	if (ret == false) {
+		pr_err("%s:set_param failed - %02x:%02x(%d)\n", __func__,
+			param_val, curr_val, ret);
+		pdata->afc_disable = curr_val;
+		return ret;
+	}
 #endif
 
 	pr_info("%s afc_disable(%d)\n", __func__, pdata->afc_disable);

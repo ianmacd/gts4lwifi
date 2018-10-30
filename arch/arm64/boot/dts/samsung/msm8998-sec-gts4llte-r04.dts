@@ -1608,7 +1608,7 @@
 				qcom,cdc-mad-dmic-rate = <0x927c0>;
 				qcom,wdsp-cmpnt-dev-name = "tavil_codec";
 				qcom,cdc-dmic-clk-drv-strength = <0x2>;
-				qcom,tavil-tx-unmute-delay-ms = <0x1>;
+				qcom,tavil-tx-unmute-delay-ms = <0x2d>;
 				imp-table = <0x34 0x0 0x0 0x4 0x34 0x1 0xf 0x0 0x34 0x10 0x1b 0x3 0x34 0x1c 0x2c 0x4 0x34 0x2d 0x66 0x7 0x34 0x67 0xca 0x9 0x34 0xcb 0x3e8 0xa 0x34 0x3e9 0x7fffffff 0x4>;
 
 				wcd_pinctrl@5 {
@@ -13650,8 +13650,8 @@
 			};
 
 			ice40_iris_fw_ready {
-				linux,phandle = <0x288>;
-				phandle = <0x288>;
+				linux,phandle = <0x292>;
+				phandle = <0x292>;
 
 				mux {
 					pins = "gpio8", "gpio81", "gpio84", "gpio85", "gpio89";
@@ -13666,8 +13666,8 @@
 			};
 
 			ice40_pogo_ldo_en {
-				linux,phandle = <0x289>;
-				phandle = <0x289>;
+				linux,phandle = <0x293>;
+				phandle = <0x293>;
 
 				mux {
 					pins = "gpio31";
@@ -13683,8 +13683,8 @@
 			};
 
 			ice40_disable_miso {
-				linux,phandle = <0x28a>;
-				phandle = <0x28a>;
+				linux,phandle = <0x294>;
+				phandle = <0x294>;
 
 				mux {
 					pins = "gpio82";
@@ -13702,8 +13702,8 @@
 			grip_i2c {
 
 				grip_i2c_active {
-					linux,phandle = <0x28d>;
-					phandle = <0x28d>;
+					linux,phandle = <0x286>;
+					phandle = <0x286>;
 
 					grip_i2c_active {
 						pins = "gpio115", "gpio136";
@@ -13713,8 +13713,8 @@
 				};
 
 				grip_i2c_suspend {
-					linux,phandle = <0x28f>;
-					phandle = <0x28f>;
+					linux,phandle = <0x287>;
+					phandle = <0x287>;
 
 					grip_i2c_suspend {
 						pins = "gpio115", "gpio136";
@@ -13724,8 +13724,8 @@
 				};
 
 				grip_wifi_i2c_active {
-					linux,phandle = <0x291>;
-					phandle = <0x291>;
+					linux,phandle = <0x28a>;
+					phandle = <0x28a>;
 
 					grip_wifi_i2c_active {
 						pins = "gpio128", "gpio133";
@@ -13735,8 +13735,8 @@
 				};
 
 				grip_wifi_i2c_suspend {
-					linux,phandle = <0x292>;
-					phandle = <0x292>;
+					linux,phandle = <0x28b>;
+					phandle = <0x28b>;
 
 					grip_wifi_i2c_suspend {
 						pins = "gpio128", "gpio133";
@@ -13749,8 +13749,8 @@
 			grip_int {
 
 				grip_int_active {
-					linux,phandle = <0x28e>;
-					phandle = <0x28e>;
+					linux,phandle = <0x288>;
+					phandle = <0x288>;
 
 					grip_int_active {
 						pins = "gpio127";
@@ -13760,8 +13760,8 @@
 				};
 
 				grip_int_suspend {
-					linux,phandle = <0x290>;
-					phandle = <0x290>;
+					linux,phandle = <0x289>;
+					phandle = <0x289>;
 
 					grip_int_suspend {
 						pins = "gpio127";
@@ -13771,8 +13771,8 @@
 				};
 
 				grip_wifi_int_active {
-					linux,phandle = <0x293>;
-					phandle = <0x293>;
+					linux,phandle = <0x28c>;
+					phandle = <0x28c>;
 
 					grip_wifi_int_active {
 						pins = "gpio79";
@@ -13782,8 +13782,8 @@
 				};
 
 				grip_wifi_int_suspend {
-					linux,phandle = <0x294>;
-					phandle = <0x294>;
+					linux,phandle = <0x28d>;
+					phandle = <0x28d>;
 
 					grip_wifi_int_suspend {
 						pins = "gpio79";
@@ -13793,8 +13793,8 @@
 				};
 
 				grip_wifi_sub_int_active {
-					linux,phandle = <0x295>;
-					phandle = <0x295>;
+					linux,phandle = <0x28e>;
+					phandle = <0x28e>;
 
 					grip_wifi_sub_int_active {
 						pins = "gpio86";
@@ -13804,8 +13804,8 @@
 				};
 
 				grip_wifi_sub_int_suspend {
-					linux,phandle = <0x296>;
-					phandle = <0x296>;
+					linux,phandle = <0x28f>;
+					phandle = <0x28f>;
 
 					grip_wifi_sub_int_suspend {
 						pins = "gpio86";
@@ -14047,8 +14047,8 @@
 			hrm_int {
 
 				hrm_int_active {
-					linux,phandle = <0x28c>;
-					phandle = <0x28c>;
+					linux,phandle = <0x296>;
+					phandle = <0x296>;
 
 					hrm_int {
 						pins = "gpio122";
@@ -14058,8 +14058,8 @@
 				};
 
 				hrm_int_suspend {
-					linux,phandle = <0x28b>;
-					phandle = <0x28b>;
+					linux,phandle = <0x295>;
+					phandle = <0x295>;
 
 					hrm_int {
 						pins = "gpio122";
@@ -14102,8 +14102,8 @@
 			};
 
 			redriver_int_active {
-				linux,phandle = <0x286>;
-				phandle = <0x286>;
+				linux,phandle = <0x290>;
+				phandle = <0x290>;
 
 				mux {
 					pins = "gpio9";
@@ -14118,8 +14118,8 @@
 			};
 
 			redriver_int_suspend {
-				linux,phandle = <0x287>;
-				phandle = <0x287>;
+				linux,phandle = <0x291>;
+				phandle = <0x291>;
 
 				mux {
 					pins = "gpio9";
@@ -18432,6 +18432,7 @@
 			compatible = "gpio-keys";
 			input-name = "gpio-keys";
 			status = "okay";
+			gpio-key,wakeup_enable;
 
 			vol_up {
 				label = "volume_up";
@@ -19035,6 +19036,117 @@
 			status = "okay";
 		};
 
+		i2c@17 {
+			cell-index = <0x11>;
+			compatible = "i2c-gpio";
+			gpios = <0x5f 0x73 0x0 0x5f 0x88 0x0>;
+			#i2c-gpio,delay-us = <0x2>;
+			#address-cells = <0x1>;
+			#size-cells = <0x0>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <0x286>;
+			pinctrl-1 = <0x287>;
+
+			sx9320-i2c@28 {
+				compatible = "sx9320";
+				reg = <0x28>;
+				pinctrl-names = "default", "sleep";
+				pinctrl-0 = <0x288>;
+				pinctrl-1 = <0x289>;
+				interrupt-parent = <0x5f>;
+				interrupts = <0x7f 0x0>;
+				sx9320,nirq-gpio = <0x5f 0x7f 0x0>;
+				sx9320,phen = <0x3>;
+				sx9320,gain = <0x1>;
+				sx9320,again = <0x8>;
+				sx9320,scan_period = <0x16>;
+				sx9320,range = <0x0>;
+				sx9320,sampling_freq = <0x10>;
+				sx9320,resolution = <0x7>;
+				sx9320,rawfilt = <0x1>;
+				sx9320,hyst = <0x1>;
+				sx9320,avgposfilt = <0x4>;
+				sx9320,avgnegfilt = <0x1>;
+				sx9320,avgthresh = <0x20>;
+				sx9320,debouncer = <0x1>;
+				sx9320,normal_thd = <0x1b>;
+				sx9320,afeph0 = <0x0>;
+				sx9320,afeph1 = <0x0>;
+				sx9320,afeph2 = <0x0>;
+				sx9320,afeph3 = <0x4>;
+			};
+		};
+
+		i2c@18 {
+			cell-index = <0x12>;
+			compatible = "i2c-gpio";
+			gpios = <0x5f 0x85 0x0 0x5f 0x80 0x0>;
+			#i2c-gpio,delay-us = <0x2>;
+			#address-cells = <0x1>;
+			#size-cells = <0x0>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <0x28a>;
+			pinctrl-1 = <0x28b>;
+
+			sx9320_wifi-i2c@2c {
+				compatible = "sx9320_wifi";
+				reg = <0x2c>;
+				pinctrl-names = "default", "sleep";
+				pinctrl-0 = <0x28c>;
+				pinctrl-1 = <0x28d>;
+				interrupt-parent = <0x5f>;
+				interrupts = <0x4f 0x0>;
+				sx9320_wifi,nirq-gpio = <0x5f 0x4f 0x0>;
+				sx9320_wifi,phen = <0x3>;
+				sx9320_wifi,gain = <0x1>;
+				sx9320_wifi,again = <0x6>;
+				sx9320_wifi,scan_period = <0x16>;
+				sx9320_wifi,range = <0x0>;
+				sx9320_wifi,sampling_freq = <0x8>;
+				sx9320_wifi,resolution = <0x7>;
+				sx9320_wifi,rawfilt = <0x1>;
+				sx9320_wifi,hyst = <0x1>;
+				sx9320_wifi,avgposfilt = <0x4>;
+				sx9320_wifi,avgnegfilt = <0x1>;
+				sx9320_wifi,avgthresh = <0x20>;
+				sx9320_wifi,debouncer = <0x1>;
+				sx9320_wifi,normal_thd = <0x1b>;
+				sx9320_wifi,afeph0 = <0x0>;
+				sx9320_wifi,afeph1 = <0x0>;
+				sx9320_wifi,afeph2 = <0x0>;
+				sx9320_wifi,afeph3 = <0x4>;
+			};
+
+			sx9320_wifi_sub-i2c@28 {
+				compatible = "sx9320_wifi_sub";
+				reg = <0x28>;
+				pinctrl-names = "default", "sleep";
+				pinctrl-0 = <0x28e>;
+				pinctrl-1 = <0x28f>;
+				interrupt-parent = <0x5f>;
+				interrupts = <0x56 0x0>;
+				sx9320_wifi_sub,nirq-gpio = <0x5f 0x56 0x0>;
+				sx9320_wifi_sub,phen = <0x3>;
+				sx9320_wifi_sub,gain = <0x1>;
+				sx9320_wifi_sub,again = <0x6>;
+				sx9320_wifi_sub,scan_period = <0x16>;
+				sx9320_wifi_sub,range = <0x0>;
+				sx9320_wifi_sub,sampling_freq = <0x8>;
+				sx9320_wifi_sub,resolution = <0x7>;
+				sx9320_wifi_sub,rawfilt = <0x1>;
+				sx9320_wifi_sub,hyst = <0x1>;
+				sx9320_wifi_sub,avgposfilt = <0x4>;
+				sx9320_wifi_sub,avgnegfilt = <0x1>;
+				sx9320_wifi_sub,avgthresh = <0x20>;
+				sx9320_wifi_sub,debouncer = <0x1>;
+				sx9320_wifi_sub,normal_thd = <0x1b>;
+				sx9320_wifi_sub,afeph0 = <0x0>;
+				sx9320_wifi_sub,afeph1 = <0x0>;
+				sx9320_wifi_sub,afeph2 = <0x0>;
+				sx9320_wifi_sub,afeph3 = <0x4>;
+			};
+		};
+
 		rome_cable {
 			compatible = "samsung,rome_cable";
 			wlan_cable_wifi1 = <0x5f 0x69 0x0>;
@@ -19072,8 +19184,8 @@
 			#address-cells = <0x1>;
 			#size-cells = <0x0>;
 			pinctrl-names = "default", "sleep";
-			pinctrl-0 = <0x286>;
-			pinctrl-1 = <0x287>;
+			pinctrl-0 = <0x290>;
+			pinctrl-1 = <0x291>;
 
 			ptn36502@1a {
 				compatible = "ptn36502_driver";
@@ -19096,9 +19208,9 @@
 				compatible = "ice40_iris";
 				reg = <0x6c>;
 				pinctrl-names = "ice40_iris_fw_ready", "ice40_pogo_ldo_en", "ice40_disable_miso";
-				pinctrl-0 = <0x288>;
-				pinctrl-1 = <0x289>;
-				pinctrl-2 = <0x28a>;
+				pinctrl-0 = <0x292>;
+				pinctrl-1 = <0x293>;
+				pinctrl-2 = <0x294>;
 				ice40,fw_ver = <0x1>;
 				ice40,sda-gpio = <0x5f 0x51 0x0>;
 				ice40,spi-miso = <0x5f 0x52 0x0>;
@@ -19118,120 +19230,12 @@
 			interrupt-parent = <0x5f>;
 			interrupts = <0x7a 0x0>;
 			pinctrl-names = "sleep", "default", "idle";
-			pinctrl-0 = <0x28b>;
-			pinctrl-1 = <0x28b>;
-			pinctrl-2 = <0x28c>;
+			pinctrl-0 = <0x295>;
+			pinctrl-1 = <0x295>;
+			pinctrl-2 = <0x296>;
 			hrmsensor,hrm_int-gpio = <0x5f 0x7a 0x0>;
 			hrmsensor_1p8-supply = <0xd1>;
 			hrmsensor_3p3-supply = <0xcf>;
-		};
-
-		i2c@17 {
-			cell-index = <0x11>;
-			compatible = "i2c-gpio";
-			gpios = <0x5f 0x73 0x0 0x5f 0x88 0x0>;
-			#i2c-gpio,delay-us = <0x2>;
-			#address-cells = <0x1>;
-			#size-cells = <0x0>;
-			pinctrl-names = "default", "sleep";
-			pinctrl-0 = <0x28d 0x28e>;
-			pinctrl-1 = <0x28f 0x290>;
-
-			sx9320-i2c@28 {
-				compatible = "sx9320";
-				reg = <0x28>;
-				interrupt-parent = <0x5f>;
-				interrupts = <0x7f 0x0>;
-				sx9320,nirq-gpio = <0x5f 0x7f 0x0>;
-				sx9320,phen = <0x3>;
-				sx9320,gain = <0x1>;
-				sx9320,again = <0x8>;
-				sx9320,scan_period = <0x16>;
-				sx9320,range = <0x0>;
-				sx9320,sampling_freq = <0x10>;
-				sx9320,resolution = <0x7>;
-				sx9320,rawfilt = <0x1>;
-				sx9320,hyst = <0x1>;
-				sx9320,avgposfilt = <0x4>;
-				sx9320,avgnegfilt = <0x1>;
-				sx9320,avgthresh = <0x20>;
-				sx9320,debouncer = <0x1>;
-				sx9320,normal_thd = <0x28>;
-				sx9320,afeph0 = <0x0>;
-				sx9320,afeph1 = <0x0>;
-				sx9320,afeph2 = <0x0>;
-				sx9320,afeph3 = <0x4>;
-			};
-		};
-
-		i2c@18 {
-			cell-index = <0x12>;
-			compatible = "i2c-gpio";
-			gpios = <0x5f 0x85 0x0 0x5f 0x80 0x0>;
-			#i2c-gpio,delay-us = <0x2>;
-			#address-cells = <0x1>;
-			#size-cells = <0x0>;
-			pinctrl-names = "default", "sleep";
-			pinctrl-0 = <0x291>;
-			pinctrl-1 = <0x292>;
-
-			sx9320_wifi-i2c@2c {
-				compatible = "sx9320_wifi";
-				reg = <0x2c>;
-				pinctrl-names = "default", "sleep";
-				pinctrl-0 = <0x293>;
-				pinctrl-1 = <0x294>;
-				interrupt-parent = <0x5f>;
-				interrupts = <0x4f 0x0>;
-				sx9320_wifi,nirq-gpio = <0x5f 0x4f 0x0>;
-				sx9320_wifi,phen = <0x3>;
-				sx9320_wifi,gain = <0x1>;
-				sx9320_wifi,again = <0x8>;
-				sx9320_wifi,scan_period = <0x16>;
-				sx9320_wifi,range = <0x0>;
-				sx9320_wifi,sampling_freq = <0x8>;
-				sx9320_wifi,resolution = <0x7>;
-				sx9320_wifi,rawfilt = <0x1>;
-				sx9320_wifi,hyst = <0x1>;
-				sx9320_wifi,avgposfilt = <0x4>;
-				sx9320_wifi,avgnegfilt = <0x1>;
-				sx9320_wifi,avgthresh = <0x20>;
-				sx9320_wifi,debouncer = <0x1>;
-				sx9320_wifi,normal_thd = <0x1f>;
-				sx9320_wifi,afeph0 = <0x0>;
-				sx9320_wifi,afeph1 = <0x0>;
-				sx9320_wifi,afeph2 = <0x0>;
-				sx9320_wifi,afeph3 = <0x4>;
-			};
-
-			sx9320_wifi_sub-i2c@28 {
-				compatible = "sx9320_wifi_sub";
-				reg = <0x28>;
-				pinctrl-names = "default", "sleep";
-				pinctrl-0 = <0x295>;
-				pinctrl-1 = <0x296>;
-				interrupt-parent = <0x5f>;
-				interrupts = <0x56 0x0>;
-				sx9320_wifi_sub,nirq-gpio = <0x5f 0x56 0x0>;
-				sx9320_wifi_sub,phen = <0x3>;
-				sx9320_wifi_sub,gain = <0x1>;
-				sx9320_wifi_sub,again = <0x8>;
-				sx9320_wifi_sub,scan_period = <0x16>;
-				sx9320_wifi_sub,range = <0x0>;
-				sx9320_wifi_sub,sampling_freq = <0x8>;
-				sx9320_wifi_sub,resolution = <0x7>;
-				sx9320_wifi_sub,rawfilt = <0x1>;
-				sx9320_wifi_sub,hyst = <0x1>;
-				sx9320_wifi_sub,avgposfilt = <0x4>;
-				sx9320_wifi_sub,avgnegfilt = <0x1>;
-				sx9320_wifi_sub,avgthresh = <0x20>;
-				sx9320_wifi_sub,debouncer = <0x1>;
-				sx9320_wifi_sub,normal_thd = <0x22>;
-				sx9320_wifi_sub,afeph0 = <0x0>;
-				sx9320_wifi_sub,afeph1 = <0x0>;
-				sx9320_wifi_sub,afeph2 = <0x0>;
-				sx9320_wifi_sub,afeph3 = <0x4>;
-			};
 		};
 	};
 
@@ -19356,7 +19360,7 @@
 			alloc-ranges = <0x0 0x0 0x0 0xffffffff>;
 			reusable;
 			alignment = <0x0 0x200000>;
-			size = <0x0 0x5c00000>;
+			size = <0x0 0x8c00000>;
 			linux,phandle = <0xc1>;
 			phandle = <0xc1>;
 		};

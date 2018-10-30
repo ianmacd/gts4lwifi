@@ -3152,7 +3152,7 @@ static int __mdss_fb_wait_for_fence_sub(struct msm_sync_pt_data *sync_pt_data,
 		if (sync_pt_data)
 			pr_err("%s: sync_fence_wait failed! ret = %x\n",
 					sync_pt_data->fence_name, ret);
-		MDSS_XLOG_TOUT_HANDLER("mdp", "panic");
+
 		for (; i < fence_cnt; i++)
 			sync_fence_put(fences[i]);
 	}
