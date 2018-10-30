@@ -3071,6 +3071,35 @@ static int drv_cmd_country(hdd_adapter_t *adapter,
 	return ret;
 }
 
+static int drv_cmd_set_auto_channel(hdd_adapter_t *adapter,
+					 hdd_context_t *hdd_ctx,
+					 uint8_t *command,
+					 uint8_t command_len,
+					 hdd_priv_data_t *priv_data)
+{
+	uint8_t filter_type = 0;
+	uint8_t *value;
+
+	value = command + 13;
+	/* Convert the value from ascii to integer */
+
+	if (kstrtou8(value, 10, &filter_type) < 0) {
+		/*
+		 * If the input value is greater than max value of datatype,
+		 * then also kstrtou8 fails
+		 */
+		hdd_err("%s: kstrtou8 failed range", __func__);
+		return -EINVAL;
+	}
+	hdd_info("%s: auto channel %hu", __func__, filter_type);
+	if (filter_type == 0 || filter_type == 1)
+		hdd_ctx->config->force_sap_acs = filter_type;
+	else
+		return -EINVAL;
+
+	return 0;
+}
+
 static int drv_cmd_set_roam_trigger(hdd_adapter_t *adapter,
 				    hdd_context_t *hdd_ctx,
 				    uint8_t *command,
@@ -7012,6 +7041,7 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
 	{"SET_AP_WPS_P2P_IE",         drv_cmd_dummy, false},
 	{"BTCOEXSCAN",                drv_cmd_dummy, false},
 	{"RXFILTER",                  drv_cmd_dummy, false},
+	{"AUTO_CHANNEL",              drv_cmd_set_auto_channel, true},
 	{"SETROAMTRIGGER",            drv_cmd_set_roam_trigger, true},
 	{"GETROAMTRIGGER",            drv_cmd_get_roam_trigger, false},
 	{"SETROAMSCANPERIOD",         drv_cmd_set_roam_scan_period, true},

@@ -57,6 +57,7 @@ struct gpio_keys_platform_data {
 	void (*disable)(struct device *dev);
 	const char *name;		/* input device name */
 	bool use_syscore;
+	bool wakeup_enable;
 };
 
 #if defined(CONFIG_SEC_PM)

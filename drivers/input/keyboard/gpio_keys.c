@@ -814,6 +814,7 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 	pdata->rep = !!of_get_property(node, "autorepeat", NULL);
 	pdata->name = of_get_property(node, "input-name", NULL);
 	pdata->use_syscore = of_property_read_bool(node, "use-syscore");
+	pdata->wakeup_enable = of_property_read_bool(node, "gpio-key,wakeup_enable");
 
 	i = 0;
 	for_each_child_of_node(node, pp) {
@@ -970,6 +971,9 @@ static int gpio_keys_probe(struct platform_device *pdev)
 		if (button->wakeup)
 			wakeup = 1;
 	}
+
+	if (pdata->wakeup_enable)
+		wakeup = 1;
 
 	error = sysfs_create_group(&pdev->dev.kobj, &gpio_keys_attr_group);
 	if (error) {

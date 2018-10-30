@@ -685,6 +685,7 @@ static int s2mu004_get_rawsoc(struct s2mu004_fuelgauge_data *fuelgauge)
 	int ocv_pwroff = 0, ocv_pwr_voltagemode = 0;
 	int target_soc = 0;
 	int float_voltage = 0;
+	int scaled_soc = 0;
 
 	/* SOC VM Monitoring For debugging SOC error */
 	u8 r_monoutsel;
@@ -849,7 +850,23 @@ static int s2mu004_get_rawsoc(struct s2mu004_fuelgauge_data *fuelgauge)
 	psy_do_property("battery", get, POWER_SUPPLY_PROP_CAPACITY, value);
 	dev_info(&fuelgauge->i2c->dev, "%s: UI SOC = %d\n", __func__, value.intval);
 
-	if ((value.intval >= 98) ||
+	/* Use scaled capacity for high SOC voltage mode check
+	 * to prevent backflow of SOC
+	 */
+	if (fuelgauge->pdata->capacity_calculation_type &
+		(SEC_FUELGAUGE_CAPACITY_TYPE_SCALE |
+		 SEC_FUELGAUGE_CAPACITY_TYPE_DYNAMIC_SCALE)) {
+		scaled_soc = fuelgauge->info.soc / 10;
+		scaled_soc = (scaled_soc < fuelgauge->pdata->capacity_min) ?
+			0 : ((scaled_soc - fuelgauge->pdata->capacity_min) * 1000 /
+			(fuelgauge->capacity_max - fuelgauge->pdata->capacity_min));
+
+		dev_info(&fuelgauge->i2c->dev, "%s: scaled_soc = %d\n",
+				__func__, scaled_soc);
+	} else
+		scaled_soc = value.intval * 10;
+
+	if ((scaled_soc >= 979) ||
 		((fuelgauge->is_charging == true) &&
 		(avg_vbat > float_voltage) && avg_current < 500)) {
 		if(fuelgauge->mode == CURRENT_MODE) { /* switch to VOLTAGE_MODE */
@@ -860,8 +877,8 @@ static int s2mu004_get_rawsoc(struct s2mu004_fuelgauge_data *fuelgauge)
 			dev_info(&fuelgauge->i2c->dev, "%s: FG is in high soc voltage mode\n", __func__);
 		}
 	}
-	else if (((avg_current > 550) && (value.intval < 97)) ||
-				((avg_current < 10) && (value.intval < 97))) {
+	else if (((avg_current > 550) && (scaled_soc < 970)) ||
+				((avg_current < 10) && (scaled_soc < 970))) {
 		if(fuelgauge->mode == HIGH_SOC_VOLTAGE_MODE) {
 			fuelgauge->mode = CURRENT_MODE;
 
