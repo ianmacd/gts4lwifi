@@ -226,6 +226,8 @@ int ipc_log_context_destroy(void *ctxt);
 
 #else
 
+#include <asm-generic/errno-base.h>
+
 static inline void *ipc_log_context_create(int max_num_pages,
 	const char *modname, uint16_t user_version)
 { return NULL; }
