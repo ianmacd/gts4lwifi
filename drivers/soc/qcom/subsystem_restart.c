@@ -1208,7 +1208,9 @@ int subsystem_restart_dev(struct subsys_device *dev)
 		__subsystem_restart_dev(dev);
 		break;
 	case RESET_SOC:
+#ifdef CONFIG_QCOM_RTB
 		msm_rtb_stop();
+#endif
 		__pm_stay_awake(&dev->ssr_wlock);
 #ifdef CONFIG_SEC_DEBUG
 		/*

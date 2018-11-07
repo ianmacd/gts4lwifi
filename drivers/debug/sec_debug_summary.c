@@ -535,7 +535,9 @@ int __init sec_debug_summary_init(void)
 	sec_debug_summary_set_kallsyms_info(secdbg_apss);
 
 	_set_kconst(secdbg_apss);
+#ifdef CONFIG_QCOM_RTB
 	sec_debug_summary_set_rtb_info(secdbg_apss);
+#endif
 
 	summary_set_task_info(secdbg_apss);
 
