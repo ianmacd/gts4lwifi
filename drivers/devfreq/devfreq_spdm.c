@@ -26,7 +26,9 @@
 #include "governor.h"
 #include "devfreq_spdm.h"
 
+#ifdef CONFIG_IPC_LOGGING
 static void *spdm_ipc_log_ctxt;
+#endif
 #define DEVFREQ_SPDM_DEFAULT_WINDOW_MS 100
 #define SPDM_IPC_LOG_PAGES	5
 
@@ -256,16 +258,20 @@ int __spdm_hyp_call(struct spdm_args *args, int num_args)
 
 	memcpy(desc.arg, args->arg,
 		COPY_SIZE(sizeof(desc.arg), sizeof(args->arg)));
+#ifdef CONFIG_IPC_LOGGING
 	SPDM_IPC_LOG("hvc call fn:0x%x, cmd:%llu, num_args:%d\n",
 		HVC_FN_SIP(SPDM_HYP_FNID), desc.arg[0], num_args);
+#endif
 
 	status = hvc(HVC_FN_SIP(SPDM_HYP_FNID), &desc);
 
 	memcpy(args->ret, desc.ret,
 		COPY_SIZE(sizeof(args->ret), sizeof(desc.ret)));
+#ifdef CONFIG_IPC_LOGGING
 	SPDM_IPC_LOG("hvc return fn:0x%x cmd:%llu Ret[0]:%llu Ret[1]:%llu\n",
 			HVC_FN_SIP(SPDM_HYP_FNID), desc.arg[0],
 			desc.ret[0], desc.ret[1]);
+#endif
 	return status;
 }
 
@@ -273,9 +279,11 @@ int __spdm_scm_call(struct spdm_args *args, int num_args)
 {
 	int status = 0;
 
+#ifdef CONFIG_IPC_LOGGING
 	SPDM_IPC_LOG("%s:svc_id:%d,cmd_id:%d,cmd:%llu,num_args:%d\n",
 		__func__, SPDM_SCM_SVC_ID, SPDM_SCM_CMD_ID,
 		args->arg[0], num_args);
+#endif
 
 	if (!is_scm_armv8()) {
 		status = scm_call(SPDM_SCM_SVC_ID, SPDM_SCM_CMD_ID, args->arg,
@@ -297,9 +305,11 @@ int __spdm_scm_call(struct spdm_args *args, int num_args)
 		memcpy(args->ret, desc.ret,
 			COPY_SIZE(sizeof(args->ret), sizeof(desc.ret)));
 	}
+#ifdef CONFIG_IPC_LOGGING
 	SPDM_IPC_LOG("%s:svc_id:%d,cmd_id:%d,cmd:%llu,Ret[0]:%llu,Ret[1]:%llu\n"
 		, __func__, SPDM_SCM_SVC_ID, SPDM_SCM_CMD_ID, args->arg[0],
 		args->ret[0], args->ret[1]);
+#endif
 	return status;
 }
 
@@ -366,6 +376,7 @@ static int probe(struct platform_device *pdev)
 	}
 
 	spdm_init_debugfs(&pdev->dev);
+#ifdef CONFIG_IPC_LOGGING
 	spdm_ipc_log_ctxt = ipc_log_context_create(SPDM_IPC_LOG_PAGES,
 							"devfreq_spdm", 0);
 
@@ -373,7 +384,7 @@ static int probe(struct platform_device *pdev)
 		pr_err("%s: Failed to create IPC log context\n", __func__);
 		spdm_ipc_log_ctxt = NULL;
 	}
-
+#endif
 
 	return 0;
 
@@ -412,8 +423,10 @@ static int remove(struct platform_device *pdev)
 	devm_kfree(&pdev->dev, data);
 	platform_set_drvdata(pdev, NULL);
 
+#ifdef CONFIG_IPC_LOGGING
 	if (spdm_ipc_log_ctxt)
 		ipc_log_context_destroy(spdm_ipc_log_ctxt);
+#endif
 
 	return 0;
 }

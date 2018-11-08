@@ -6591,7 +6591,9 @@ static int msm_pcie_probe(struct platform_device *pdev)
 	int ret = 0;
 	int rc_idx = -1;
 	int i, j;
+#ifdef CONFIG_IPC_LOGGING
 	char rc_name[MAX_RC_NAME_LEN];
+#endif
 
 	PCIE_GEN_DBG("%s\n", __func__);
 
@@ -6610,6 +6612,7 @@ static int msm_pcie_probe(struct platform_device *pdev)
 			goto out;
 		}
 
+#ifdef CONFIG_IPC_LOGGING
 		snprintf(rc_name, MAX_RC_NAME_LEN, "pcie%d-short", rc_idx);
 		msm_pcie_dev[rc_idx].ipc_log =
 			ipc_log_context_create(PCIE_LOG_PAGES, rc_name, 0);
@@ -6640,6 +6643,7 @@ static int msm_pcie_probe(struct platform_device *pdev)
 			PCIE_DBG(&msm_pcie_dev[rc_idx],
 				"PCIe IPC logging %s is enable for RC%d\n",
 				rc_name, rc_idx);
+#endif
 
 		pcie_drv.rc_num++;
 		PCIE_DBG(&msm_pcie_dev[rc_idx], "PCIe: RC index is %d.\n",

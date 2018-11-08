@@ -181,7 +181,7 @@ static void msm_lmh_dcvs_poll(unsigned long data)
 	max_limit = msm_lmh_mitigation_notify(hw);
 	if (max_limit >= hw->max_freq) {
 		del_timer(&hw->poll_timer);
-#ifdef CONFIG_SEC_PM
+#if defined(CONFIG_SEC_PM) && defined(CONFIG_IPC_LOGGING)
 		LMHDCVS_IPC_LOG("Finished lmh cpu%d, lowest freq %d\n",
 			cpumask_first(&hw->core_map), hw->lowest_freq);
 		hw->limiting = false;
@@ -220,7 +220,7 @@ static irqreturn_t lmh_dcvs_handle_isr(int irq, void *data)
 	struct msm_lmh_dcvs_hw *hw = data;
 
 	lmh_dcvs_notify(hw);
-#ifdef CONFIG_SEC_PM
+#if defined(CONFIG_SEC_PM) && defined(CONFIG_IPC_LOGGING)
 		LMHDCVS_IPC_LOG("Start lmh cpu%d @%d\n",
 			cpumask_first(&hw->core_map), hw->hw_freq_limit);
 #endif
@@ -592,7 +592,7 @@ static int msm_lmh_dcvs_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&hw->list);
 	list_add(&hw->list, &lmh_dcvs_hw_list);
 
-#ifdef CONFIG_SEC_PM
+#if defined(CONFIG_SEC_PM) && defined(CONFIG_IPC_LOGGING)
 	if (!lmh_dcvs_ipc_log)
 		lmh_dcvs_ipc_log = ipc_log_context_create(
 					LMHDCVS_IPC_LOG_PAGES, "lmh_dcvs", 0);

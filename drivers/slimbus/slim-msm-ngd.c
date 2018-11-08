@@ -1641,12 +1641,14 @@ static ssize_t show_mask(struct device *device, struct device_attribute *attr,
 static ssize_t set_mask(struct device *device, struct device_attribute *attr,
 			const char *buf, size_t count)
 {
+#ifdef CONFIG_IPC_LOGGING
 	struct platform_device *pdev = to_platform_device(device);
 	struct msm_slim_ctrl *dev = platform_get_drvdata(pdev);
 
 	dev->ipc_log_mask = buf[0] - '0';
 	if (dev->ipc_log_mask > DBG_LEV)
 		dev->ipc_log_mask = DBG_LEV;
+#endif
 	return count;
 }
 
@@ -1710,6 +1712,7 @@ static int ngd_slim_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, dev);
 	slim_set_ctrldata(&dev->ctrl, dev);
 
+#ifdef CONFIG_IPC_LOGGING
 	/* Create IPC log context */
 	dev->ipc_slimbus_log = ipc_log_context_create(IPC_SLIMBUS_LOG_PAGES,
 						dev_name(dev->dev), 0);
@@ -1722,6 +1725,7 @@ static int ngd_slim_probe(struct platform_device *pdev)
 		SLIM_INFO(dev, "start logging for slim dev %s\n",
 				dev_name(dev->dev));
 	}
+#endif
 	ret = sysfs_create_file(&dev->dev->kobj, &dev_attr_debug_mask.attr);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to create dev. attr\n");
