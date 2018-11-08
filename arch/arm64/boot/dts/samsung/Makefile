@@ -131,6 +131,13 @@ dtb-$(CONFIG_SEC_GTS4LWIFI_PROJECT) += msm8998-sec-gts4lwifi-r02.dtb \
 				msm8998-sec-gts4lwifi-r04.dtb \
 				msm8998-sec-gts4lwifi-r06.dtb
 
+ifeq ($(filter y,$(CONFIG_MACH_GTS4LWIFI_ZC)),y)
+	dtb-y = msm8998-sec-gts4lwifi-chn-r02.dtb \
+		msm8998-sec-gts4lwifi-chn-r04.dtb \
+		msm8998-sec-gts4lwifi-chn-r06.dtb
+
+endif
+
 ifeq ($(CONFIG_ARM64),y)
 always          := $(dtb-y)
 subdir-y        := $(dts-dirs)

@@ -8,7 +8,11 @@
 #include <linux/ccic/BOOT_FLASH_FW_BOOT6.h>
 #include <linux/ccic/BOOT_FLASH_FW_0x0C_BOOT7.h>
 #include <linux/ccic/BOOT_FLASH_FW_0x0C_BOOT8.h>
+#if defined(CONFIG_MACH_GTS4LLTE_VZW)   // only VZW use f/w 0x44
+#include <linux/ccic/BOOT_FLASH_FW_0x0D_BOOT8_VZW.h>
+#else                                   // others use f/w 0x42
 #include <linux/ccic/BOOT_FLASH_FW_0x0D_BOOT8.h>
+#endif
 #include <linux/ccic/BOOT_FLASH_FW_0x0A_BOOT7.h>
 #include <linux/ccic/BOOT_FLASH_FW_0x01_BOOT7.h>
 #include <linux/ccic/BOOT_SRAM_FW.h>
