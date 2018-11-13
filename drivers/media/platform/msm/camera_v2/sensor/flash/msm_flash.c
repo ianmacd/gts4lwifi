@@ -822,6 +822,7 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 			flash_ctrl->flash_state = MSM_CAMERA_FLASH_RELEASE;
 #elif defined(CONFIG_LEDS_KTD2692)
 			ktd2692_flash_on(FLASH_OFF);
+                        flash_ctrl->flash_state = MSM_CAMERA_FLASH_RELEASE;
 			CDBG("Ktd2692 led turn off: CFG_FLASH_RELEASE\n");
 #else
 			rc = flash_ctrl->func_tbl->camera_flash_release(
@@ -842,6 +843,7 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 			flash_ctrl->flash_state = MSM_CAMERA_FLASH_OFF;
 #elif defined(CONFIG_LEDS_KTD2692)
 			ktd2692_flash_on(FLASH_OFF);
+                        flash_ctrl->flash_state = MSM_CAMERA_FLASH_OFF;
 			CDBG("Ktd2692 led turn off: CFG_FLASH_OFF\n");
 #else
 			rc = flash_ctrl->func_tbl->camera_flash_off(
@@ -863,6 +865,7 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 			flash_ctrl->flash_state = MSM_CAMERA_FLASH_LOW;
 #elif defined(CONFIG_LEDS_KTD2692)
 			ktd2692_flash_on(TORCH_ON);
+                        flash_ctrl->flash_state = MSM_CAMERA_FLASH_LOW;
 			CDBG("Ktd2692 led turn on:CFG_FLASH_LOW\n");
 #else
 			rc = flash_ctrl->func_tbl->camera_flash_low(
@@ -888,6 +891,7 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 			flash_ctrl->flash_state = MSM_CAMERA_FLASH_LOW;
 #elif defined(CONFIG_LEDS_KTD2692)
 			ktd2692_flash_on(TORCH_ON);
+                        flash_ctrl->flash_state = MSM_CAMERA_FLASH_LOW;
 			CDBG("Ktd2692 led turn on:CFG_FLASH_TORCH\n");
 #else
 			rc = flash_ctrl->func_tbl->camera_flash_low(
@@ -909,6 +913,7 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 			flash_ctrl->flash_state = MSM_CAMERA_FLASH_HIGH;
 #elif defined(CONFIG_LEDS_KTD2692)
 			ktd2692_flash_on(FLASH_ON);
+                        flash_ctrl->flash_state = MSM_CAMERA_FLASH_HIGH;
 			CDBG("Ktd2692 led turn on:CFG_FLASH_TORCH\n");
 #else
 			rc = flash_ctrl->func_tbl->camera_flash_high(

@@ -1565,6 +1565,13 @@ config MACH_GTS4LLTE_SPR
                 help
                   Support for Samsung GTS4LLTE USA SPR device.
 
+config MACH_GTS4LLTE_TMO
+        depends on SEC_GTS4LLTE_PROJECT
+                default n
+                bool "Samsung GTS4LLTE USA TMO"
+                help
+                  Support for Samsung GTS4LLTE USA TMO device.
+
 config MACH_GTS4LLTE_TUR
         depends on SEC_GTS4LLTE_PROJECT
                 default n
