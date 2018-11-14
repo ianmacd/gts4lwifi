@@ -201,8 +201,8 @@ static void msm_lmh_dcvs_poll(unsigned long data)
 
 	if ((hw->limiting == true) && (hw->prev_max_freq != max_limit)) {
 		hw->prev_max_freq = max_limit;
-#endif
 	}
+#endif
 }
 
 static void lmh_dcvs_notify(struct msm_lmh_dcvs_hw *hw)
@@ -224,7 +224,9 @@ static irqreturn_t lmh_dcvs_handle_isr(int irq, void *data)
 		LMHDCVS_IPC_LOG("Start lmh cpu%d @%d\n",
 			cpumask_first(&hw->core_map), hw->hw_freq_limit);
 #endif
+#ifdef CONFIG_SEC_PM
 	hw->limiting = true;
+#endif
 
 	return IRQ_HANDLED;
 }

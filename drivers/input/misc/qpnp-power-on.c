@@ -914,17 +914,25 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 #if defined(CONFIG_SEC_PM)
 	/* RESIN is used for VOL DOWN key, it should report the keycode for kernel panic */
 	if ((cfg->key_code == KEY_VOLUMEDOWN) && (pon_rt_sts & pon_rt_bit)) {
+#ifdef CONFIG_SEC_PM_DEBUG
 		pon->powerkey_state = 1;
+#endif
 		check_vdkey_press = 1;
 	} else if((cfg->key_code == KEY_VOLUMEDOWN) && !(pon_rt_sts & pon_rt_bit)) {
+#ifdef CONFIG_SEC_PM_DEBUG
 		pon->powerkey_state = 0;
+#endif
 		check_vdkey_press = 0;
 	}
 	if (((cfg->key_code == KEY_POWER) || (cfg->key_code == KEY_ENDCALL)) && (pon_rt_sts & pon_rt_bit)) {
+#ifdef CONFIG_SEC_PM_DEBUG
 		pon->powerkey_state = 1;
+#endif
 		check_pkey_press = 1;
 	} else if(((cfg->key_code == KEY_POWER) || (cfg->key_code == KEY_ENDCALL)) && !(pon_rt_sts & pon_rt_bit)) {
+#ifdef CONFIG_SEC_PM_DEBUG
 		pon->powerkey_state = 0;
+#endif
 		check_pkey_press = 0;
 	}
 #endif
@@ -938,13 +946,13 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	return 0;
 }
 
+#if defined(CONFIG_SEC_PM)
 int check_short_pkey(void)
 {
 	return check_pkey_press;
 }
 EXPORT_SYMBOL(check_short_pkey);
 
-#if defined(CONFIG_SEC_PM)
 int get_pkey_press(void){
 	return check_pkey_press;
 }
@@ -2104,6 +2112,7 @@ static void qpnp_pon_debugfs_remove(struct platform_device *pdev)
 {}
 #endif
 
+#ifdef CONFIG_SEC_PM
 static ssize_t sysfs_powerkey_onoff_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -2119,6 +2128,7 @@ static ssize_t sysfs_powerkey_onoff_show(struct device *dev,
 }
 
 static DEVICE_ATTR(sec_powerkey_pressed, 0444 , sysfs_powerkey_onoff_show, NULL);
+#endif
 
 #ifdef CONFIG_SEC_PM_DEBUG
 static int qpnp_wake_enabled(const char *val, const struct kernel_param *kp)
@@ -2606,11 +2616,13 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 	if (IS_ERR(sec_powerkey)) {
 		pr_err("Failed to create device(sec_powerkey)!\n");
 	} else {
+#ifdef CONFIG_SEC_PM
 		rc = device_create_file(sec_powerkey, &dev_attr_sec_powerkey_pressed);
 		if (rc) {
 			pr_err("Failed to create device file in sysfs entries(%s)!\n",
 				dev_attr_sec_powerkey_pressed.attr.name);
 		}
+#endif
 	}
 	dev_set_drvdata(sec_powerkey, pon);
 
