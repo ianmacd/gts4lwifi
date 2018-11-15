@@ -17,10 +17,12 @@
 
 #if defined(CONFIG_DEBUG_FS)
 static int kaslr_debug_show(struct seq_file *m, void *private){
-	u64 kernel_addr = (u64)( __virt_to_phys(_text));
-	u64 offset = (u64)(kimage_vaddr - KIMAGE_VADDR);
+	extern u64 *__boot_kernel_offset;
+	u64 *kernel_addr = (u64 *) &__boot_kernel_offset;
 
-	seq_printf(m, "0x%016llx..0x%016llx..\n", kernel_addr, offset);
+	seq_printf(m, "0x%016llx..0x%016llx..\n",
+		   ((u64)kernel_addr[0] + (u64)kernel_addr[1]),
+		   (u64)kernel_addr[1] + (u64)kernel_addr[0] - (u64)kernel_addr[2]);
 
 	return 0 ;
 }
