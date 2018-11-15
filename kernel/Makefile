@@ -109,7 +109,14 @@ $(obj)/configs.o: $(obj)/config_data.h
 # config_data.h contains the same information as ikconfig.h but gzipped.
 # Info from config_data can be extracted from /proc/config*
 targets += config_data.gz
-$(obj)/config_data.gz: $(KCONFIG_CONFIG) FORCE
+ifeq ($(CONFIG_SEC_GTS4LWIFI_PROJECT),y)
+  defconfig := arch/arm64/stockconfigs/gts4lwifi_eur_open_stock_defconfig
+else ifeq ($(CONFIG_SEC_GTS4LLTE_PROJECT),y)
+  defconfig := arch/arm64/stockconfigs/gts4llte_eur_open_stock_defconfig
+else
+  defconfig := $(KCONFIG_CONFIG)
+endif
+$(obj)/config_data.gz: $(defconfig) FORCE
 	$(call if_changed,gzip)
 
       filechk_ikconfiggz = (echo "static const char kernel_config_data[] __used = MAGIC_START"; cat $< | scripts/basic/bin2c; echo "MAGIC_END;")
