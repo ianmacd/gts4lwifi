@@ -8687,7 +8687,7 @@ static int qseecom_probe(struct platform_device *pdev)
 					cmd_buf = (void *)&req;
 					cmd_len = sizeof(struct
 						qsee_apps_region_info_ireq);
-#ifdef CONFIG_SEC_DEBUG
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
 					sec_debug_secure_app_addr_size(req.addr, req.size);
 #endif
 					pr_warn("secure app region addr=0x%x size=0x%x",
@@ -8701,7 +8701,7 @@ static int qseecom_probe(struct platform_device *pdev)
 					cmd_buf = (void *)&req_64bit;
 					cmd_len = sizeof(struct
 					qsee_apps_region_info_64bit_ireq);
-#ifdef CONFIG_SEC_DEBUG
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
 					sec_debug_secure_app_addr_size(req_64bit.addr, req_64bit.size);
 #endif
 					pr_warn("secure app region addr=0x%llx size=0x%x",

@@ -2073,7 +2073,9 @@ static int lpm_probe(struct platform_device *pdev)
 	if (msm_minidump_add_region(&md_entry))
 		pr_info("Failed to add lpm_debug in Minidump\n");
 
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
 	summary_set_lpm_info_cci(virt_to_phys((void *)&lpm_root_node->last_level));
+#endif
 
 	return 0;
 failed:
