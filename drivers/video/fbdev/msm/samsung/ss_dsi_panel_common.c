@@ -1831,7 +1831,9 @@ int mdss_samsung_panel_on_post(struct mdss_panel_data *pdata)
 int mdss_samsung_panel_off_pre(struct mdss_panel_data *pdata)
 {
 	int ret = 0;
+#ifdef CONFIG_DISPLAY_USE_INFO
 	int rddpm,rddsm,errfg,dsierror;
+#endif
 	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
 	struct samsung_display_driver_data *vdd =
 			(struct samsung_display_driver_data *)pdata->panel_private;

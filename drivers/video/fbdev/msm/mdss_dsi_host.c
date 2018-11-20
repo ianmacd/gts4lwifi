@@ -3192,7 +3192,9 @@ static int dsi_event_thread(void *data)
 							__func__);
 #if defined(CONFIG_FB_MSM_MDSS_SAMSUNG)
 			inc_dpui_u32_field(DPUI_KEY_QCT_DSIE, 1);
+#if defined(CONFIG_DISPLAY_USE_INFO)
 			samsung_get_vdd()->dsi_errors = todo;
+#endif
 #endif
 			spin_lock_irqsave(&ctrl->mdp_lock, flag);
 			ctrl->mdp_busy = false;
