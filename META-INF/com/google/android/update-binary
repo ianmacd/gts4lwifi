@@ -138,7 +138,7 @@ if ! ( [ $device = T830 ] || [ $device = T835 ] ); then
   exit 1
 fi
 
-ui_print " - Detected a $device device on $fw firmware."
+ui_print " - Detected a $device device with $fw bootloader."
 
 BOOT=$(resolve_link $(find /dev/block/platform -type l -iname boot))
 
