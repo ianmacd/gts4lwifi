@@ -140,7 +140,6 @@ static void mdss_mdp_kcal_update_pcc(struct kcal_lut_data *lut_data)
 	kfree(payload);
 }
 
-#if 0
 static void mdss_mdp_kcal_read_pcc(struct kcal_lut_data *lut_data)
 {
 	u32 copyback = 0;
@@ -151,7 +150,7 @@ static void mdss_mdp_kcal_read_pcc(struct kcal_lut_data *lut_data)
 	pcc_config.block = MDP_LOGICAL_BLOCK_DISP_0;
 	pcc_config.ops = MDP_PP_OPS_READ;
 
-	mdss_mdp_pcc_config(&pcc_config, &copyback);
+	mdss_mdp_pcc_config(fb0_ctl->mfd, &pcc_config, &copyback);
 
 	/* LiveDisplay disables pcc when using default values and regs
 	 * are zeroed on pp resume, so throw these values out.
@@ -163,7 +162,6 @@ static void mdss_mdp_kcal_read_pcc(struct kcal_lut_data *lut_data)
 	lut_data->green = (pcc_config.g.g & 0xffff) / PCC_ADJ;
 	lut_data->blue = (pcc_config.b.b & 0xffff) / PCC_ADJ;
 }
-#endif
 
 static void mdss_mdp_kcal_update_pa(struct kcal_lut_data *lut_data)
 {
@@ -224,38 +222,6 @@ static void mdss_mdp_kcal_update_pa(struct kcal_lut_data *lut_data)
 	}
 }
 
-#if 0
-static void mdss_mdp_kcal_update_igc(struct kcal_lut_data *lut_data)
-{
-	u32 copyback = 0, copy_from_kernel = 1;
-	struct mdp_igc_lut_data igc_config;
-	struct mdp_igc_lut_data_v1_7 *payload;
-
-	if (!mdss_mdp_kcal_store_fb0_ctl()) return;
-
-	memset(&igc_config, 0, sizeof(struct mdp_igc_lut_data));
-
-	igc_config.version = mdp_igc_v1_7;
-	igc_config.block = MDP_LOGICAL_BLOCK_DISP_0;
-	igc_config.ops = lut_data->invert && lut_data->enable ?
-		MDP_PP_OPS_WRITE | MDP_PP_OPS_ENABLE :
-			MDP_PP_OPS_WRITE | MDP_PP_OPS_DISABLE;
-	igc_config.len = IGC_LUT_ENTRIES;
-	igc_config.c0_c1_data = igc_inverted;
-	igc_config.c2_data = igc_rgb;
-
-	payload = kzalloc(sizeof(struct mdp_igc_lut_data_v1_7),GFP_USER);
-	payload->len = IGC_LUT_ENTRIES;
-	payload->c0_c1_data =igc_inverted;
-	payload->c2_data = igc_rgb;
-
-	igc_config.cfg_payload = payload;
-
-	mdss_mdp_igc_lut_config(fb0_ctl->mfd, &igc_config, &copyback, copy_from_kernel);
-	kfree(payload);
-}
-#endif
-
 static ssize_t kcal_store(struct device *dev, struct device_attribute *attr,
 						const char *buf, size_t count)
 {
@@ -282,7 +248,7 @@ static ssize_t kcal_show(struct device *dev, struct device_attribute *attr,
 {
 	struct kcal_lut_data *lut_data = dev_get_drvdata(dev);
 
-	//mdss_mdp_kcal_read_pcc(lut_data);
+	mdss_mdp_kcal_read_pcc(lut_data);
 
 	return scnprintf(buf, PAGE_SIZE, "%d %d %d\n",
 		lut_data->red, lut_data->green, lut_data->blue);
@@ -353,8 +319,13 @@ static ssize_t kcal_invert_store(struct device *dev,
 		(lut_data->invert == kcal_invert))
 		return -EINVAL;
 
-	//disable
-	lut_data->invert = 0;
+	/* Inversion causes the Tab S4's screen to go blank, so we disable it
+	 * here by setting it to zero.
+	*/
+	lut_data->invert = 0; /* was: lut_data->invert = kcal_invert; */
+
+	mdss_mdp_kcal_update_pcc(lut_data);
+	mdss_mdp_kcal_display_commit();
 
 	return count;
 }
