@@ -5880,7 +5880,7 @@ static SOC_ENUM_SINGLE_DECL(cf_int8_1_enum, WCD934X_CDC_RX8_RX_PATH_CFG2, 0,
 							rx_cf_text);
 static SOC_ENUM_SINGLE_DECL(cf_int8_2_enum, WCD934X_CDC_RX8_RX_PATH_MIX_CFG, 2,
 							rx_cf_text);
-#ifndef CONFIG_SOUND_CONTROL
+#ifndef CONFIG_SND_SOC_WCD934X_SND_CTRL
 static int tavil_impedance_vol_get(struct snd_kcontrol *kcontrol,
 		      struct snd_ctl_elem_value *ucontrol)
 {
@@ -5987,7 +5987,7 @@ static const struct snd_kcontrol_new tavil_snd_controls[] = {
 
 	SOC_SINGLE_SX_TLV("RX0 Digital Volume", WCD934X_CDC_RX0_RX_VOL_CTL,
 		0, -84, 40, digital_gain), /* -84dB min - 40dB max */
-#ifndef CONFIG_SOUND_CONTROL
+#ifndef CONFIG_SND_SOC_WCD934X_SND_CTRL
 	SOC_SINGLE_SX_TLV("RX1 Digital Volume", WCD934X_CDC_RX1_RX_VOL_CTL,
 		0, -84, 40, digital_gain),
 	SOC_SINGLE_SX_TLV("RX2 Digital Volume", WCD934X_CDC_RX2_RX_VOL_CTL,
@@ -6003,7 +6003,7 @@ static const struct snd_kcontrol_new tavil_snd_controls[] = {
 		0, -84, 40, digital_gain),
 	SOC_SINGLE_SX_TLV("RX0 Mix Digital Volume",
 		WCD934X_CDC_RX0_RX_VOL_MIX_CTL, 0, -84, 40, digital_gain),
-#ifndef CONFIG_SOUND_CONTROL
+#ifndef CONFIG_SND_SOC_WCD934X_SND_CTRL
 	SOC_SINGLE_RANGE_EXT_TLV("RX1 Mix Digital Volume",
 		WCD934X_CDC_RX1_RX_VOL_MIX_CTL, 0, -84, 40, 0,
 		tavil_impedance_vol_get, tavil_impedance_vol_put,
@@ -9397,7 +9397,7 @@ done:
 	return ret;
 }
 
-#ifdef CONFIG_SOUND_CONTROL
+#ifdef CONFIG_SND_SOC_WCD934X_SND_CTRL
 static struct snd_soc_codec *sound_control_codec_ptr;
 
 static ssize_t headphone_gain_show(struct kobject *kobj,
@@ -9512,7 +9512,7 @@ static int tavil_soc_codec_probe(struct snd_soc_codec *codec)
 	int i, ret;
 	void *ptr = NULL;
 
-#ifdef CONFIG_SOUND_CONTROL
+#ifdef CONFIG_SND_SOC_WCD934X_SND_CTRL
 	sound_control_codec_ptr = codec;
 #endif
 	control = dev_get_drvdata(codec->dev->parent);
@@ -10350,7 +10350,7 @@ static int tavil_probe(struct platform_device *pdev)
 	}
 	schedule_work(&tavil->tavil_add_child_devices_work);
 
-#ifdef CONFIG_SOUND_CONTROL
+#ifdef CONFIG_SND_SOC_WCD934X_SND_CTRL
 	sound_control_kobj = kobject_create_and_add("sound_control", kernel_kobj);
 	if (!sound_control_kobj) {
 		pr_warn("%s kobject create failed!\n", __func__);

@@ -16,7 +16,7 @@
 #include <linux/regmap.h>
 #include <linux/export.h>
 #include <sound/soc.h>
-#ifdef CONFIG_SOUND_CONTROL
+#ifdef CONFIG_SND_SOC_WCD934X_SND_CTRL
 #include <linux/mfd/wcd934x/registers.h>
 #endif
 
@@ -212,7 +212,7 @@ EXPORT_SYMBOL_GPL(snd_soc_read);
 int snd_soc_write(struct snd_soc_codec *codec, unsigned int reg,
 	unsigned int val)
 {
-#ifdef CONFIG_SOUND_CONTROL
+#ifdef CONFIG_SND_SOC_WCD934X_SND_CTRL
 	char caller[80];
 	sprintf(caller, "%ps", __builtin_return_address(0));
 	if ((		reg == WCD934X_CDC_RX1_RX_VOL_CTL ||
@@ -241,7 +241,7 @@ EXPORT_SYMBOL_GPL(snd_soc_write);
 int snd_soc_update_bits(struct snd_soc_codec *codec, unsigned int reg,
 				unsigned int mask, unsigned int value)
 {
-#ifdef CONFIG_SOUND_CONTROL
+#ifdef CONFIG_SND_SOC_WCD934X_SND_CTRL
 	char caller[80];
 	sprintf(caller, "%ps", __builtin_return_address(0));
 	if ((		reg == WCD934X_CDC_RX1_RX_VOL_CTL ||

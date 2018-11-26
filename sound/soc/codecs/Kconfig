@@ -1044,10 +1044,10 @@ config SND_SOC_TFA9896
 source "sound/soc/codecs/sdm660_cdc/Kconfig"
 source "sound/soc/codecs/msm_sdw/Kconfig"
 
-config SOUND_CONTROL
+config SND_SOC_WCD934X_SND_CTRL
 	bool "Sound control for WCD934x"
 	depends on SND_SOC_WCD934X
 	help
-		Allow L/R headphone gain control.
+		Allow headphone, mic and earpiece gain control for WCD934x.
 
 endmenu
