@@ -1048,6 +1048,6 @@ config SND_SOC_WCD934X_SND_CTRL
 	bool "Sound control for WCD934x"
 	depends on SND_SOC_WCD934X
 	help
-		Allow headphone, mic and earpiece gain control for WCD934x.
+		Allow headphone and microphone gain control for WCD934x.
 
 endmenu
