@@ -1,0 +1,166 @@
+#!/bin/sh -x
+
+rm_version() {
+  [ -f .version ] && rm .version
+}
+
+build() {
+  kconfigure() {
+    local feature=$1
+    local value=$2
+
+    sed -i -e 's/^.*CONFIG_'$feature'=.\+$/CONFIG_'$feature'="'"$value"'"/' .config
+  }
+
+  kenable() {
+    local feature=$1
+
+    sed -i -e "s/^.*CONFIG_$feature.\+$/CONFIG_$feature=y/" .config
+  }
+
+  kdisable() {
+    local feature=$1
+
+    sed -i -e "s/^.*CONFIG_$feature.\+$/# CONFIG_$feature is not set/" .config
+  }
+
+  pack_boot_img() {
+    local variant=$1
+
+    cp -p $archdir/boot/Image.gz-dtb $imgdir/$dev/$firmware/AIK-Linux/split_img/boot.img-zImage || exit 1
+    cd $imgdir/$dev/$firmware/AIK-Linux
+    ./repackimg.sh || exit 1
+    mv image-new.img $imgdir/$dev/boot-$my_kernel-$linux_v-$my_ver$variant-$build-$dev.img
+    cd -
+  }
+
+  local dev=$1
+  local config=$2
+  local eng=$3
+
+  echo Make $dev standard$ENG...
+  rm_version; make clean && make $config
+  sed -i 's/^CONFIG_LOCALVERSION=.\+$/CONFIG_LOCALVERSION="'-$my_kernel-$my_ver'"/' .config
+
+  if [ -n "$eng" ]; then
+    # Enable engineering options.
+    kenable ASSISTED_SUPERUSER
+  fi
+
+  make -j$(nproc) || exit 1
+
+  pack_boot_img $ENG
+}
+
+package() {
+  update_bin=$zipdir/META-INF/com/google/android/update-binary
+
+  sed -i -e "s/^lversion=.\+$/lversion=$linux_v/" \
+	 -e "s/^kversion=.\+$/kversion=$my_ver/" \
+	 -e "s/^build=.\+$/build=$build/" \
+	 -e "s/^tagline=.\*$/tagline=$build/" $update_bin
+
+  rm -f $zipdir/*.{img,bsdiff}
+  cp -p $imgdir/t830/boot-$my_kernel-$linux_v-$my_ver$ENG-$build-t830.img $zipdir
+
+  bsdiff $zipdir/boot-$my_kernel-$linux_v-$my_ver$ENG-$build-t830.img \
+	 $imgdir/t835/boot-$my_kernel-$linux_v-$my_ver$ENG-$build-t835.img \
+	 $zipdir/boot-$my_kernel-$linux_v-$my_ver-$build$ENG-t835.img.bsdiff
+
+  rm -f $stagedir/$my_kernel-$my_ver$ENG-$build.zip
+  cd $zipdir
+  7za a -tzip -x'!.*' -mx9 $stagedir/$my_kernel-$linux_v-$my_ver$ENG-$build.zip
+}
+
+root=~/src
+stagedir=$root/modesty
+imgdir=$stagedir/img
+zipdir=$stagedir/zip
+archdir=arch/arm64
+
+linux_v=$(make kernelversion 2>/dev/null)
+my_kernel=modesty
+my_ver=0.99.13a1
+firmware=arj3
+build=1
+tagline='Modesty is a virtue.'
+
+argv=$( getopt -o aenp --long all,eng,g960,g965,no-package,package-only -n build_kernels -- "$@" )
+
+eval set -- "$argv"
+
+while :; do
+  case "$1" in
+    -a|--all)
+      echo Option $1.
+      shift
+      build_t830=true
+      build_t835=true
+      continue
+      ;;
+    -e|--eng|--engineering)
+      echo Option $1.
+      shift
+      eng=true
+      ENG=-ENG
+      continue
+      ;;
+    --t830)
+      echo Option $1.
+      shift
+      build_t830=true
+      continue
+      ;;
+    --t835)
+      echo Option $1.
+      shift
+      build_t835=true
+      continue
+      ;;
+    -n|--no-package)
+      echo Option $1.
+      shift
+      no_package=true
+      continue
+      ;;
+    -p|--package-only)
+      echo Option $1.
+      shift
+      package_only=true
+      continue
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      echo getopt error!
+      echo $1
+      exit 1
+      ;;
+  esac
+done
+
+if [ -z "$build_t830" ] && [ -z "$build_t835" ] &&
+   [ -z "$package_only" ]; then
+  echo Must use at least one of: -a --t830 --t835 -p >&2
+  exit 1
+fi
+
+if [[ "$1" == [0-9]* ]]; then
+  build=$1
+  shift
+fi
+
+if [ -n "$package_only" ]; then
+  package
+  exit 0
+fi
+
+sudo -p 'sudo needed for packing boot images. Enter password: ' echo
+[ -n "$build_t830" ] && build t830 gts4lwifi_eur_open_defconfig $eng
+[ -n "$build_t835" ] && build t835 gts4llte_eur_open_defconfig $eng
+
+if [ -z "$no_package" ]; then
+  package
+fi
