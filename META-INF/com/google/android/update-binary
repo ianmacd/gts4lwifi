@@ -4,8 +4,8 @@
 ZIPFILE=$3
 OUTFD=$2
 
-lversion=4.4.164
-kversion=0.99.10
+lversion=4.4.166
+kversion=0.99.12
 build=1
 kname=modesty
 tagline='Modesty is a virtue.'
@@ -99,7 +99,9 @@ print_justified() {
 }
 
 resolve_link() {
-  if [ -z "$1" ] || [ ! -e $1 ] ; then return 1 ; fi
+  if [ -z "$1" ] || [ ! -e $1 ]; then
+    return 1
+  fi
   local VAR=$1
   while [ -L $VAR ]; do
     VAR=$(readlink $VAR)
@@ -122,7 +124,7 @@ ui_print " "
 
 bl=$( getprop ro.boot.bootloader )
 
-# Firmware version starts at either 8th or 9th character, depending on lenth
+# Firmware version starts at either 8th or 9th character, depending on length
 # of bootloader string (12 or 13).
 #
 fw=${bl:$((${#bl} - 4)):4}
@@ -150,6 +152,10 @@ fi
 
 ZIPNAME=${ZIPFILE##*/}
 
+# Check for engineering kernel.
+#
+[ $ZIPNAME != ${ZIPNAME/-ENG//} ] && ENG=-ENG
+
 if [ $ZIPNAME != ${ZIPNAME/_interactive//} ] ||
   [ -f /external_sd/.modesty_interactive ]; then
   INTERACTIVE=true
@@ -174,8 +180,8 @@ fi
 
 # Now get to work.
 #
-t830_img=boot-$kname-$lversion-$kversion-$build-t830.img
-t835_img=boot-$kname-$lversion-$kversion-$build-t835.img
+t830_img=boot-$kname-$lversion-$kversion$ENG-$build-t830.img
+t835_img=boot-$kname-$lversion-$kversion$ENG-$build-t835.img
 
 for i in $t830_img $t835_img.bsdiff bspatch; do
   unzip_file $i /tmp/$i
@@ -189,12 +195,12 @@ image=standard
 if [ $device = T830 ]; then
   dst_img=/tmp/$t830_img
 else
-  ui_print " - Constructing $image kernel for $device..."
+  ui_print " - Constructing $image$ENG kernel for $device..."
   $bspatch /tmp/$t830_img /tmp/$t835_img /tmp/$t835_img.bsdiff
   dst_img=/tmp/$t835_img
 fi
 
-ui_print " - Flashing $image boot image onto $device..."
+ui_print " - Flashing $image$ENG boot image onto $device..."
 [ -n "$debug" ] && ui_print " - dd if=$dst_img of=$BOOT"
 
 /sbin/dd if=$dst_img of=$BOOT 
@@ -207,8 +213,9 @@ int=/sdcard/Download	# The standard download location on internal SD card.
 ext=/external_sd	# The external SD card, if present.
 mfile=.modesty_magisk	# The name of the file to look for.
 
-# If $mfile exists at none of these locations and the APGK zip file doesn't
-# contain _magisk in the name, we are finished.
+# If $mfile exists at none of these locations and the Modesty zip file doesn't
+# contain _magisk in the name and we didn't interactively request Magisk,
+# we are finished.
 #
 if ( ([ ! -f $int/$mfile ] && [ ! -f $ext/$mfile ]) || "$INTERACTIVE" = true) \
   && [ -z "$MAGISK" ]; then
