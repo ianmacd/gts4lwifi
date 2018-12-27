@@ -158,6 +158,11 @@ if [ -n "$package_only" ]; then
 fi
 
 sudo -p 'sudo needed for packing boot images. Enter password: ' echo
+
+# Force check of WireGuard version.
+#
+rm -f net/wireguard/.check
+
 [ -n "$build_t830" ] && build t830 gts4lwifi_eur_open_defconfig $eng
 [ -n "$build_t835" ] && build t835 gts4llte_eur_open_defconfig $eng
 
