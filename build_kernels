@@ -81,11 +81,11 @@ archdir=arch/arm64
 linux_v=$(make kernelversion 2>/dev/null)
 my_kernel=modesty
 my_ver=0.99.14
-firmware=arj3
+firmware=ark4
 build=1
 tagline='Modesty is a virtue.'
 
-argv=$( getopt -o aenp --long all,eng,g960,g965,no-package,package-only -n build_kernels -- "$@" )
+argv=$( getopt -o aenp --long all,eng,t830,t835,no-package,package-only -n build_kernels -- "$@" )
 
 eval set -- "$argv"
 
