@@ -2104,7 +2104,9 @@ static const struct file_operations sec_store_lastkmsg_proc_fops = {
 
 static void sec_restore_modem_reset_data(void)
 {
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
 	void *p_modem = sec_debug_summary_get_modem();
+#endif
 	struct debug_reset_header *header = get_debug_reset_header();
 
 	if (!header) {
@@ -2117,12 +2119,13 @@ static void sec_restore_modem_reset_data(void)
 		return;
 	}
 
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
 	if (p_modem) {
 		read_debug_partition(debug_index_modem_info, p_modem);
 		pr_info("%s : complete.\n", __func__);
-	} else {
+	} else
+#endif
 		pr_info("%s : skip.\n", __func__);
-	}
 }
 
 void sec_debug_summary_modem_print(void)
@@ -2132,12 +2135,14 @@ void sec_debug_summary_modem_print(void)
 		return;
 	}
 
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
 	pr_info("%s : 0x%016lx\n", __func__,
 		(unsigned long)sec_debug_summary_get_modem());
 
 	print_hex_dump(KERN_INFO, "", DUMP_PREFIX_OFFSET, 16, 1,
 		sec_debug_summary_get_modem(),
 		0x190, 1);
+#endif
 }
 EXPORT_SYMBOL(sec_debug_summary_modem_print);
 
