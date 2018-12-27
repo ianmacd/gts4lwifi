@@ -662,6 +662,11 @@ static bool s2mu004_chg_init(struct s2mu004_charger_data *charger)
 			S2MU004_WDT_TIMER_80s << WDT_TIME_SHIFT,
 			WDT_TIME_MASK);
 
+#if !defined(CONFIG_SEC_FACTORY)
+	/* To prevent not-detaching issue by reverse-boost */
+	s2mu004_update_reg(charger->i2c, 0x91, 0x0, 0x1 << 6);
+#endif
+
 	/* IVR Recovery enable */
 	s2mu004_update_reg(charger->i2c, S2MU004_CHG_CTRL13,
 		0x1 << SET_IVR_Recovery_SHIFT, SET_IVR_Recovery_MASK);

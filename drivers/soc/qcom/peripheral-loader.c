@@ -43,10 +43,7 @@
 #include <trace/events/trace_msm_pil_event.h>
 
 #include "peripheral-loader.h"
-
-#ifdef CONFIG_SEC_PERIPHERAL_SECURE_CHK
 #include <linux/qcom/sec_debug.h>
-#endif
 
 #define pil_err(desc, fmt, ...)						\
 	dev_err(desc->dev, "%s: " fmt, desc->name, ##__VA_ARGS__)
@@ -1025,6 +1022,11 @@ int pil_boot(struct pil_desc *desc)
 	}
 
 	trace_pil_event("before_auth_reset", desc);
+
+	if (!strcmp(desc->name, "modem")) {
+		sec_debug_summary_modem_print();
+	}
+
 	ret = desc->ops->auth_and_reset(desc);
 	if (ret) {
 		pil_err(desc, "Failed to bring out of reset(rc:%d)\n", ret);

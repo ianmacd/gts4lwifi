@@ -2102,6 +2102,45 @@ static const struct file_operations sec_store_lastkmsg_proc_fops = {
 	.release = single_release,
 };
 
+static void sec_restore_modem_reset_data(void)
+{
+	void *p_modem = sec_debug_summary_get_modem();
+	struct debug_reset_header *header = get_debug_reset_header();
+
+	if (!header) {
+		pr_info("%s : updated nothing.\n", __func__);
+		return;
+	}
+
+	if (sec_debug_get_reset_reason() != USER_UPLOAD_CAUSE_PANIC) {
+		pr_info("%s : it was not kernel panic.\n", __func__);
+		return;
+	}
+
+	if (p_modem) {
+		read_debug_partition(debug_index_modem_info, p_modem);
+		pr_info("%s : complete.\n", __func__);
+	} else {
+		pr_info("%s : skip.\n", __func__);
+	}
+}
+
+void sec_debug_summary_modem_print(void)
+{
+	if (sec_debug_get_reset_reason() != USER_UPLOAD_CAUSE_PANIC) {
+		pr_info("%s : it was not kernel panic.\n", __func__);
+		return;
+	}
+
+	pr_info("%s : 0x%016lx\n", __func__,
+		(unsigned long)sec_debug_summary_get_modem());
+
+	print_hex_dump(KERN_INFO, "", DUMP_PREFIX_OFFSET, 16, 1,
+		sec_debug_summary_get_modem(),
+		0x190, 1);
+}
+EXPORT_SYMBOL(sec_debug_summary_modem_print);
+
 static int sec_reset_reason_dbg_part_notifier_callback(
 		struct notifier_block *nfb, unsigned long action, void *data)
 {
@@ -2116,7 +2155,7 @@ static int sec_reset_reason_dbg_part_notifier_callback(
 
 			sec_debug_update_reset_reason(p_health->last_rst_reason);
 			rr_data = sec_debug_get_reset_reason();
-
+			sec_restore_modem_reset_data();
 			break;
 		default:
 			return NOTIFY_DONE;

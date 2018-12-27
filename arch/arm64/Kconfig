@@ -1656,6 +1656,13 @@ config MACH_GTS4LWIFI_XX
                 help
                   Support for Samsung GTS4LWIFI EUR OPEN device.
 
+config MACH_GTS4LWIFI_XX_N08
+        depends on SEC_GTS4LWIFI_PROJECT
+                default n
+                bool "Samsung GTS4LWIFI EUR OPEN N08"
+                help
+                  Support for Samsung GTS4LWIFI EUR OPEN N08 device.
+
 config MACH_GTS4LWIFI_XX_LDU
         depends on SEC_GTS4LWIFI_PROJECT
                 default n

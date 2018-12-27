@@ -463,4 +463,5 @@ extern void summary_set_lpm_info_cci(uint64_t phy_addr);
 extern void summary_set_lpm_info_cluster(struct sec_debug_summary_data_apss *apss);
 extern void summary_set_lpm_info_runqueues(struct sec_debug_summary_data_apss *apss);
 
+extern void * sec_debug_summary_get_modem(void);
 #endif /* SEC_DEBUG_SUMMARY_H */

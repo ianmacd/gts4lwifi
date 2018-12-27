@@ -1607,9 +1607,9 @@ static bool sec_bat_check_recharge(struct sec_battery_info *battery)
 			battery->charging_mode == SEC_BATTERY_CHARGING_NONE) {
 		int recharging_voltage = battery->pdata->recharge_condition_vcell;
 		if (battery->current_event & SEC_BAT_CURRENT_EVENT_LOW_TEMP) {
-			/* float voltage - 150mV */
+			/* float voltage - 150mV(B2B CL : - 200) */
 			recharging_voltage = (battery->pdata->chg_float_voltage /
-				battery->pdata->chg_float_voltage_conv) - 150;
+				battery->pdata->chg_float_voltage_conv) - battery->pdata->swelling_low_rechg_thr;
 			dev_info(battery->dev, "%s: recharging voltage changed by low temp(%d)\n",
 					__func__, recharging_voltage);
 		}
@@ -9284,6 +9284,13 @@ static int sec_bat_parse_dt(struct device *dev,
 				pdata->swelling_low_rechg_voltage = 4000;
 	}
 
+	ret = of_property_read_u32(np, "battery,swelling_low_rechg_thr",
+			(unsigned int *)&pdata->swelling_low_rechg_thr);
+	if (ret) {
+		pr_info("%s: swelling_low_rechg_voltage_threshold is Empty\n", __func__);
+		pdata->swelling_low_rechg_thr = 150;
+	}
+
 	pr_info("%s : SWELLING_HIGH_TEMP(%d) SWELLING_HIGH_TEMP_RECOVERY(%d)\n",
 		__func__, pdata->swelling_high_temp_block, pdata->swelling_high_temp_recov);
 	pr_info("SWELLING_LOW_TEMP_1st(%d) SWELLING_LOW_TEMP_RECOVERY_1st(%d)",
@@ -9295,6 +9302,8 @@ static int sec_bat_parse_dt(struct device *dev,
 		pdata->swelling_high_temp_current, pdata->swelling_high_temp_topoff);
 	pr_info("SWELLING_LOW_RCHG_VOL(%d), SWELLING_HIGH_RCHG_VOL(%d)\n",
 		pdata->swelling_low_rechg_voltage, pdata->swelling_high_rechg_voltage);
+	pr_info("SWELLING_LOW_TEMP_RECHARGE_VOL_THRESHOLD(%d)\n",
+		pdata->swelling_low_rechg_thr);
 #endif
 
 #if defined(CONFIG_CALC_TIME_TO_FULL)

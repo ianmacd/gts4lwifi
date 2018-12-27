@@ -464,13 +464,23 @@ void summary_set_lpm_info_cci(uint64_t phy_addr)
 }
 #endif
 
+void * sec_debug_summary_get_modem(void)
+{
+	if (secdbg_summary) {
+		return (void *)&secdbg_summary->priv.modem;
+	} else {
+		pr_info("%s : secdbg_summary is null.\n", __func__);
+		return NULL;
+	}
+}
+
 int __init sec_debug_summary_init(void)
 {
 #ifdef CONFIG_SEC_DEBUG_VERBOSE_SUMMARY_HTML
 	short i;
 #endif
 
-	pr_info("%s: SMEM_ID_VENDOR0=0x%x size=0x%lx\n",
+	pr_info("%s: SMEM_ID_VENDOR2=0x%x size=0x%lx\n",
 		__func__,  (unsigned int)SMEM_ID_VENDOR2,
 		sizeof(struct sec_debug_summary));
 
