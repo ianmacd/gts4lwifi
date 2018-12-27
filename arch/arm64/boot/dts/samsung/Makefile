@@ -131,6 +131,12 @@ dtb-$(CONFIG_SEC_GTS4LWIFI_PROJECT) += msm8998-sec-gts4lwifi-r02.dtb \
 				msm8998-sec-gts4lwifi-r04.dtb \
 				msm8998-sec-gts4lwifi-r06.dtb
 
+ifeq ($(filter y,$(CONFIG_MACH_GTS4LWIFI_XX_N08)),y)
+	dtb-y = msm8998-sec-gts4lwifi-n08-r02.dtb \
+		msm8998-sec-gts4lwifi-n08-r04.dtb \
+		msm8998-sec-gts4lwifi-n08-r06.dtb
+endif
+
 ifeq ($(filter y,$(CONFIG_MACH_GTS4LWIFI_ZC)),y)
 	dtb-y = msm8998-sec-gts4lwifi-chn-r02.dtb \
 		msm8998-sec-gts4lwifi-chn-r04.dtb \

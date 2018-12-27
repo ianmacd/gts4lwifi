@@ -711,6 +711,7 @@ extern void sec_debug_store_extc_idx(bool prefix);
 extern void sec_debug_store_bug_string(const char *fmt, ...);
 extern void sec_debug_store_additional_dbg(enum extra_info_dbg_type type, unsigned int value, const char *fmt, ...);
 extern struct debug_reset_header *get_debug_reset_header(void);
+extern void sec_debug_summary_modem_print(void);
 
 static inline void sec_debug_store_pte(unsigned long addr, int idx)
 {
@@ -809,6 +810,7 @@ static inline void sec_debug_save_badmode_info(int reason, const char *handler_s
 static inline void sec_debug_save_smmu_info(ex_info_smmu_t *smmu_info)
 {
 }
+static inline void sec_debug_summary_modem_print(void) { }
 #endif // CONFIG_USER_RESET_DEBUG
 
 #ifdef CONFIG_TOUCHSCREEN_DUMP_MODE

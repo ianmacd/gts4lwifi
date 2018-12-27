@@ -18,6 +18,7 @@
 #include <linux/delay.h>
 
 #include <linux/qcom/sec_debug.h>
+#include <linux/qcom/sec_debug_summary.h>
 #include <linux/qcom/sec_debug_partition.h>
 
 static DEFINE_MUTEX(debug_partition_mutex);
@@ -313,6 +314,16 @@ bool read_debug_partition(enum debug_partition_index index, void *value)
 			wait_for_completion(&sched_debug_data.work);
 			mutex_unlock(&debug_partition_mutex);
 			break;
+		case debug_index_modem_info:
+			mutex_lock(&debug_partition_mutex);
+			sched_debug_data.value = value;
+			sched_debug_data.offset = SEC_DEBUG_RESET_MODEM_OFFSET;
+			sched_debug_data.size = sizeof(struct sec_debug_summary_data_modem);
+			sched_debug_data.direction = PARTITION_RD;
+			schedule_work(&sched_debug_data.debug_partition_work);
+			wait_for_completion(&sched_debug_data.work);
+			mutex_unlock(&debug_partition_mutex);
+			break;
 		default:
 			return false;
 	}
@@ -498,7 +509,7 @@ static void debug_partition_do_notify(struct work_struct *work)
 	return;
 }
 
-static int dbg_partitioni_panic_prepare(struct notifier_block *nb,
+static int dbg_partition_panic_prepare(struct notifier_block *nb,
 		unsigned long event, void *data)
 {
 	in_panic = 1;
@@ -506,7 +517,7 @@ static int dbg_partitioni_panic_prepare(struct notifier_block *nb,
 }
 
 static struct notifier_block dbg_partition_panic_notifier_block = {
-	.notifier_call = dbg_partitioni_panic_prepare,
+	.notifier_call = dbg_partition_panic_prepare,
 };
 
 static int __init sec_debug_partition_init(void)

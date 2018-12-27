@@ -541,6 +541,27 @@ struct ol_txrx_peer_id_map {
 	qdf_atomic_t del_peer_id_ref_cnt;
 };
 
+/**
+ * ol_txrx_stats_req_internal - specifications of the requested
+ * statistics internally
+ */
+struct ol_txrx_stats_req_internal {
+    struct ol_txrx_stats_req base;
+    TAILQ_ENTRY(ol_txrx_stats_req_internal) req_list_elem;
+    int serviced; /* state of this request */
+    int offset;
+};
+
+struct ol_txrx_fw_stats_desc_t {
+	struct ol_txrx_stats_req_internal *req;
+	unsigned char desc_id;
+};
+
+struct ol_txrx_fw_stats_desc_elem_t {
+	struct ol_txrx_fw_stats_desc_elem_t *next;
+	struct ol_txrx_fw_stats_desc_t desc;
+};
+
 /*
  * As depicted in the diagram below, the pdev contains an array of
  * NUM_EXT_TID ol_tx_active_queues_in_tid_t elements.
@@ -652,11 +673,23 @@ struct ol_txrx_pdev_t {
 	qdf_atomic_t target_tx_credit;
 	qdf_atomic_t orig_target_tx_credit;
 
+	struct {
+		uint16_t pool_size;
+		struct ol_txrx_fw_stats_desc_elem_t *pool;
+		struct ol_txrx_fw_stats_desc_elem_t *freelist;
+		qdf_spinlock_t pool_lock;
+		qdf_atomic_t initialized;
+	} ol_txrx_fw_stats_desc_pool;
+
 	/* Peer mac address to staid mapping */
 	struct ol_mac_addr mac_to_staid[WLAN_MAX_STA_COUNT + 3];
 
 	/* ol_txrx_vdev list */
 	TAILQ_HEAD(, ol_txrx_vdev_t) vdev_list;
+
+	TAILQ_HEAD(, ol_txrx_stats_req_internal) req_list;
+	int req_list_depth;
+	qdf_spinlock_t req_list_spinlock;
 
 	/* peer ID to peer object map (array of pointers to peer objects) */
 	struct ol_txrx_peer_id_map *peer_id_to_obj_map;
