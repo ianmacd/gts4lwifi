@@ -75,15 +75,13 @@ void __sync_icache_dcache(pte_t pte, unsigned long addr)
 {
 	struct page *page = pte_page(pte);
 
-	/* no flushing needed for anonymous pages */
-	if (!page_mapping(page))
-		return;
-
-	if (!test_and_set_bit(PG_dcache_clean, &page->flags))
-		sync_icache_aliases(page_address(page),
-				    PAGE_SIZE << compound_order(page));
-	else if (icache_is_aivivt())
+	if (!test_and_set_bit(PG_dcache_clean, &page->flags)) {
+		__flush_dcache_area(page_address(page),
+				PAGE_SIZE << compound_order(page));
 		__flush_icache_all();
+	} else if (icache_is_aivivt()) {
+		__flush_icache_all();
+	}
 }
 
 /*
