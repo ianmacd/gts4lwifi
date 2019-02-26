@@ -38,6 +38,10 @@ build() {
   local config=$2
   local eng=$3
 
+  if [ -n "$samsung_tc" ]; then
+    CROSS_COMPILE='ccache ./scripts/toolchain/gcc-cfp/gcc-cfp-single/aarch64-linux-android-4.9/bin/aarch64-linux-android-'
+  fi
+
   echo Make $dev standard$ENG...
   rm_version; make clean && make $config
   kconfigure LOCALVERSION "-$my_kernel-$my_ver$ENG"
@@ -85,7 +89,7 @@ firmware=ark4
 build=1
 tagline='Modesty is a virtue.'
 
-argv=$( getopt -o aenp --long all,eng,t830,t835,no-package,package-only -n build_kernels -- "$@" )
+argv=$( getopt -o aenps --long all,eng,t830,t835,no-package,package-only,samsung-toolchain -n build_kernels -- "$@" )
 
 eval set -- "$argv"
 
@@ -127,6 +131,12 @@ while :; do
       echo Option $1.
       shift
       package_only=true
+      continue
+      ;;
+    -s|--samsung-toolchain)
+      echo Option $1.
+      shift
+      samsung_tc=true
       continue
       ;;
     --)
