@@ -105,12 +105,7 @@ dtb-$(CONFIG_SEC_KELLYLTE_PROJECT) += msm8998-sec-kelly-r00.dtb \
 				msm8998-sec-kelly-r03.dtb \
 				msm8998-sec-kelly-r04.dtb
 
-dtb-$(CONFIG_SEC_GTS4LLTE_PROJECT) += msm8998-sec-gts4llte-r00.dtb \
-				msm8998-sec-gts4llte-r01.dtb \
-				msm8998-sec-gts4llte-r02.dtb \
-				msm8998-sec-gts4llte-r03.dtb \
-				msm8998-sec-gts4llte-r04.dtb \
-				msm8998-sec-gts4llte-r06.dtb
+dtb-$(CONFIG_SEC_GTS4LLTE_PROJECT) += msm8998-sec-gts4llte-r06.dtb
 
 ifeq ($(filter y,$(CONFIG_MACH_GTS4LLTE_USA)),y)
 	dtb-y = msm8998-sec-gts4llte-usa-r04.dtb \
@@ -127,9 +122,7 @@ dtb-y = msm8998-sec-gts4llte-chnhk-r04.dtb \
 				msm8998-sec-gts4llte-chnhk-r06.dtb
 endif
 
-dtb-$(CONFIG_SEC_GTS4LWIFI_PROJECT) += msm8998-sec-gts4lwifi-r02.dtb \
-				msm8998-sec-gts4lwifi-r04.dtb \
-				msm8998-sec-gts4lwifi-r06.dtb
+dtb-$(CONFIG_SEC_GTS4LWIFI_PROJECT) += msm8998-sec-gts4lwifi-r06.dtb
 
 ifeq ($(filter y,$(CONFIG_MACH_GTS4LWIFI_XX_N08)),y)
 	dtb-y = msm8998-sec-gts4lwifi-n08-r02.dtb \
