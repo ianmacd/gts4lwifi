@@ -89,7 +89,7 @@ firmware=ark4
 build=1
 tagline='Modesty is a virtue.'
 
-argv=$( getopt -o aenps --long all,eng,t830,t835,no-package,package-only,samsung-toolchain -n build_kernels -- "$@" )
+argv=$( getopt -o aenps --long all,eng,t830,t835,no-package,package-only,samsung-toolchain -- "$@" )
 
 eval set -- "$argv"
 
