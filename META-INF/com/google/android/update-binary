@@ -4,8 +4,8 @@
 ZIPFILE=$3
 OUTFD=$2
 
-lversion=4.4.186
-kversion=0.99.33
+lversion=4.4.187
+kversion=0.99.34
 build=1
 kname=modesty
 tagline='Modesty is a virtue.'
@@ -203,7 +203,7 @@ fi
 ui_print " - Flashing $image$ENG boot image onto $device..."
 [ -n "$debug" ] && ui_print " - dd if=$dst_img of=$BOOT"
 
-/sbin/dd if=$dst_img of=$BOOT 
+/sbin/dd if=$dst_img of=$BOOT
 
 ui_print " - Installation completed."
 
@@ -260,5 +260,5 @@ ui_print " "
 
 tmp=/tmp/magisk
 mkdir $tmp
-unzip -d $tmp $magisk META-INF/com/google/android/\* 
+unzip -d $tmp $magisk META-INF/com/google/android/\*
 exec /sbin/sh $tmp/META-INF/com/google/android/update-binary dummy $OUTFD $magisk
