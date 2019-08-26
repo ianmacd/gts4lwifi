@@ -4,8 +4,8 @@
 ZIPFILE=$3
 OUTFD=$2
 
-lversion=4.4.189
-kversion=0.99.36
+lversion=4.4.190
+kversion=0.99.37
 build=1
 kname=modesty
 tagline='Modesty is a virtue.'
