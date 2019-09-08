@@ -2936,24 +2936,24 @@ static int ufshcd_map_sg(struct ufshcd_lrb *lrbp)
 #ifdef TEMP_CHECK_PAGE_CORRUPTION
 	opcode = (u8)(*lrbp->cmd->cmnd);
 	if (opcode == READ_10 || opcode == READ_6) {
-		/* counthe SG elements for the data passed by SCSI layer */ 
+		/* counthe SG elements for the data passed by SCSI layer */
 		sg_segments = scsi_sg_count(cmd);
 		scsi_for_each_sg(cmd, sg, sg_segments, i) {
 			virt_sg_addr = sg_virt( sg );
-			if (sg_segments > 1) { 
-				if (i == (sg_segments - 2)) { 
-					/* 
-					 * Write magicword across each memory 
-					 * location pointed by SG element 
-					 */ 
-					memcpy(virt_sg_addr, magicword, 8); 
-				} 
-			} 
+			if (sg_segments > 1) {
+				if (i == (sg_segments - 2)) {
+					/*
+					 * Write magicword across each memory
+					 * location pointed by SG element
+					 */
+					memcpy(virt_sg_addr, magicword, 8);
+				}
+			}
 			if (i == (sg_segments - 1)) {
-				/* 
-				 * Write magicword across each memory location 
-				 * pointed by SG element 
-				 */ 
+				/*
+				 * Write magicword across each memory location
+				 * pointed by SG element
+				 */
 				memcpy(virt_sg_addr, magicword, 8);
 			}
 		}
@@ -4287,7 +4287,7 @@ int ufshcd_read_vendor_specific_desc(struct ufs_hba *hba, enum desc_idn desc_id,
 				       desc_id, desc_index, buf, size);
 		if (!err)
 			break;
-		if (err == QUERY_RESULT_INVALID_IDN) 
+		if (err == QUERY_RESULT_INVALID_IDN)
 			break;
 		dev_dbg(hba->dev, "%s: error %d retrying\n", __func__, err);
 	}
@@ -11001,7 +11001,7 @@ static void ufs_sec_send_errinfo(void *data) {
 	if (&(hba->SEC_err_info))
 	{
 		err_info = &(hba->SEC_err_info);
-		sprintf(buf, "U%1dH%1dL%1dX%1dQ%1dR%1dW%1dF%1d\n", 
+		sprintf(buf, "U%1dH%1dL%1dX%1dQ%1dR%1dW%1dF%1d\n",
 				(err_info->UTP_count.UTP_err > 9) 		/* UTP Error */
 				? 9 : err_info->UTP_count.UTP_err,
 				(err_info->op_count.HW_RESET_count > 9) 	/* HW Reset */
