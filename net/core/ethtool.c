@@ -942,7 +942,7 @@ static int ethtool_reset(struct net_device *dev, char __user *useraddr)
 static int ethtool_get_wol(struct net_device *dev, char __user *useraddr)
 {
 	struct ethtool_wolinfo wol;
-	
+
 	if (!dev->ethtool_ops->get_wol)
 		return -EOPNOTSUPP;
 

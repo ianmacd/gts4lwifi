@@ -26,7 +26,10 @@
 #include <linux/syscalls.h>
 #include <linux/uaccess.h>
 #include <linux/io.h>
+<<<<<<< HEAD
 #include <linux/kprobes.h>
+=======
+>>>>>>> linux-4.4.200
 #include <linux/arm-smccc.h>
 
 #include <asm/cacheflush.h>
@@ -72,10 +75,6 @@ EXPORT_SYMBOL(test_and_change_bit);
 EXPORT_SYMBOL(_mcount);
 NOKPROBE_SYMBOL(_mcount);
 #endif
-	/* caching functions */
-EXPORT_SYMBOL(__dma_inv_range);
-EXPORT_SYMBOL(__dma_clean_range);
-EXPORT_SYMBOL(__dma_flush_range);
 
 	/* arm-smccc */
 EXPORT_SYMBOL(arm_smccc_smc);
