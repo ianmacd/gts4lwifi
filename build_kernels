@@ -84,7 +84,7 @@ archdir=arch/arm64
 
 linux_v=$(make kernelversion 2>/dev/null)
 my_kernel=modesty
-my_ver=0.99.47
+my_ver=0.99.48
 firmware=ark4
 build=1
 tagline='Modesty is a virtue.'
